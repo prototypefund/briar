@@ -87,7 +87,8 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	private static final String OWNER = "__OwningControllerProcess";
 	private static final int COOKIE_TIMEOUT_MS = 3000;
 	private static final int COOKIE_POLLING_INTERVAL_MS = 200;
-	private static final Pattern ONION = Pattern.compile("[a-z2-7]{16}");
+	private static final Pattern ONION_V2 = Pattern.compile("[a-z2-7]{16}");
+	private static final Pattern ONION_V3 = Pattern.compile("[a-z2-7]{56}");
 
 	private final Executor ioExecutor, connectionStatusExecutor;
 	private final NetworkManager networkManager;
@@ -411,9 +412,12 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		Map<String, String> response;
 		try {
 			// Use the control connection to set up the hidden service
-			if (privKey == null)
-				response = controlConnection.addOnion(portLines);
-			else response = controlConnection.addOnion(privKey, portLines);
+			if (privKey == null) {
+				response = controlConnection.addOnion("NEW:ED25519-V3",
+						portLines, null);
+			} else {
+				response = controlConnection.addOnion(privKey, portLines);
+			}
 		} catch (IOException e) {
 			logException(LOG, WARNING, e);
 			return;
@@ -532,7 +536,8 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		if (!isRunning()) return null;
 		String onion = p.get(PROP_ONION);
 		if (StringUtils.isNullOrEmpty(onion)) return null;
-		if (!ONION.matcher(onion).matches()) {
+		if (!ONION_V3.matcher(onion).matches()
+				&& !ONION_V2.matcher(onion).matches()) {
 			// not scrubbing this address, so we are able to find the problem
 			if (LOG.isLoggable(INFO)) LOG.info("Invalid hostname: " + onion);
 			return null;
