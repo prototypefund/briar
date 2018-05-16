@@ -6,7 +6,6 @@ import android.support.test.runner.AndroidJUnit4;
 import org.briarproject.bramble.DaggerIntegrationTestComponent;
 import org.briarproject.bramble.IntegrationTestComponent;
 import org.briarproject.bramble.api.event.EventBus;
-import org.briarproject.bramble.api.plugin.BackoffFactory;
 import org.briarproject.bramble.api.plugin.duplex.DuplexPlugin;
 import org.briarproject.bramble.api.system.Clock;
 import org.briarproject.bramble.api.system.LocationUtils;
@@ -43,8 +42,6 @@ public class BridgeTest extends BrambleTestCase {
 
 	@Inject
 	EventBus eventBus;
-	@Inject
-	BackoffFactory backoffFactory;
 	@Inject
 	Clock clock;
 
@@ -88,7 +85,7 @@ public class BridgeTest extends BrambleTestCase {
 
 		factory = new TorPluginFactory(ioExecutor, scheduler, appContext,
 				locationUtils, eventBus, torSocketFactory,
-				backoffFactory, circumventionProvider, clock);
+				circumventionProvider, clock);
 	}
 
 	@Test

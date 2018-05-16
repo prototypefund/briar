@@ -5,8 +5,6 @@ import android.os.Build;
 
 import org.briarproject.bramble.api.event.EventBus;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
-import org.briarproject.bramble.api.plugin.BackoffFactory;
 import org.briarproject.bramble.api.plugin.TorConstants;
 import org.briarproject.bramble.api.plugin.TransportId;
 import org.briarproject.bramble.api.plugin.duplex.DuplexPlugin;
@@ -32,9 +30,6 @@ public class TorPluginFactory implements DuplexPluginFactory {
 
 	private static final int MAX_LATENCY = 30 * 1000; // 30 seconds
 	private static final int MAX_IDLE_TIME = 30 * 1000; // 30 seconds
-	private static final int MIN_POLLING_INTERVAL = 60 * 1000; // 1 minute
-	private static final int MAX_POLLING_INTERVAL = 10 * 60 * 1000; // 10 mins
-	private static final double BACKOFF_BASE = 1.2;
 
 	private final Executor ioExecutor;
 	private final ScheduledExecutorService scheduler;
@@ -42,25 +37,22 @@ public class TorPluginFactory implements DuplexPluginFactory {
 	private final LocationUtils locationUtils;
 	private final EventBus eventBus;
 	private final SocketFactory torSocketFactory;
-	private final BackoffFactory backoffFactory;
 	private final CircumventionProvider circumventionProvider;
 	private final Clock clock;
 
 	public TorPluginFactory(Executor ioExecutor,
 			ScheduledExecutorService scheduler, Context appContext,
 			LocationUtils locationUtils, EventBus eventBus,
-			SocketFactory torSocketFactory, BackoffFactory backoffFactory,
-			CircumventionProvider circumventionProvider,
-			Clock clock) {
+			SocketFactory torSocketFactory,
+			CircumventionProvider circumventionProvider, Clock clock) {
 		this.ioExecutor = ioExecutor;
 		this.scheduler = scheduler;
 		this.appContext = appContext;
 		this.locationUtils = locationUtils;
 		this.eventBus = eventBus;
 		this.torSocketFactory = torSocketFactory;
-		this.backoffFactory = backoffFactory;
-		this.circumventionProvider = circumventionProvider;
 		this.clock = clock;
+		this.circumventionProvider = circumventionProvider;
 	}
 
 	@Override
@@ -94,11 +86,9 @@ public class TorPluginFactory implements DuplexPluginFactory {
 		// Use position-independent executable for SDK >= 16
 		if (Build.VERSION.SDK_INT >= 16) architecture += "_pie";
 
-		Backoff backoff = backoffFactory.createBackoff(MIN_POLLING_INTERVAL,
-				MAX_POLLING_INTERVAL, BACKOFF_BASE);
 		TorPlugin plugin = new TorPlugin(ioExecutor, scheduler, appContext,
-				locationUtils, torSocketFactory, clock, backoff, callback,
-				architecture, circumventionProvider, MAX_LATENCY, MAX_IDLE_TIME);
+				locationUtils, torSocketFactory, clock, callback, architecture,
+				circumventionProvider, MAX_LATENCY, MAX_IDLE_TIME);
 		eventBus.addListener(plugin);
 		return plugin;
 	}

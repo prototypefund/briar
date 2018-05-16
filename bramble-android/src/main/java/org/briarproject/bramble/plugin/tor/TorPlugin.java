@@ -23,7 +23,6 @@ import org.briarproject.bramble.api.event.EventListener;
 import org.briarproject.bramble.api.keyagreement.KeyAgreementListener;
 import org.briarproject.bramble.api.nullsafety.MethodsNotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.ParametersNotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.PluginException;
 import org.briarproject.bramble.api.plugin.TorConstants;
 import org.briarproject.bramble.api.plugin.TransportId;
@@ -100,15 +99,59 @@ import static org.briarproject.bramble.util.PrivacyUtils.scrubOnion;
 @ParametersNotNullByDefault
 class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
+	/**
+	 * Controller events we want to receive.
+	 */
 	private static final String[] EVENTS = {
 			"CIRC", "ORCONN", "HS_DESC", "NOTICE", "WARN", "ERR"
 	};
+
+	/**
+	 * Command-line argument to set our process as Tor's owning controller
+	 * so Tor exits when our process dies.
+	 */
 	private static final String OWNER = "__OwningControllerProcess";
+
+	/**
+	 * How long to wait for the authentication cookie file to be created.
+	 */
 	private static final int COOKIE_TIMEOUT_MS = 3000;
+
+	/**
+	 * How often to check whether the authentication cookie file has been
+	 * created.
+	 */
 	private static final int COOKIE_POLLING_INTERVAL_MS = 200;
+
+	/**
+	 * Regex for matching v2 hidden service names.
+	 */
 	private static final Pattern ONION = Pattern.compile("[a-z2-7]{16}");
-	// This tag may prevent Huawei's power manager from killing us
+
+	/**
+	 * Wake lock tag. This tag may prevent Huawei's power manager from
+	 * killing us.
+	 */
 	private static final String WAKE_LOCK_TAG = "LocationManagerService";
+
+	/**
+	 * How many copies of our descriptor must be uploaded before we consider
+	 * our hidden service to be reachable and switch to less frequent polling.
+	 */
+	private static final int MIN_DESCRIPTORS_UPLOADED = 3;
+
+	/**
+	 * How often to poll before our hidden service becomes reachable.
+	 */
+	private static final int INITIAL_POLLING_INTERVAL_MS = 60 * 1000;
+
+	/**
+	 * How often to poll when our hidden service is reachable. Our contacts
+	 * will poll when they come online, so our polling is just a fallback in
+	 * case of repeated connection failures.
+	 */
+	private static final int STABLE_POLLING_INTERVAL_MS = 15 * 60 * 1000;
+
 	private static final Logger LOG =
 			Logger.getLogger(TorPlugin.class.getName());
 
@@ -118,7 +161,6 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	private final LocationUtils locationUtils;
 	private final SocketFactory torSocketFactory;
 	private final Clock clock;
-	private final Backoff backoff;
 	private final DuplexPluginCallback callback;
 	private final String architecture;
 	private final CircumventionProvider circumventionProvider;
@@ -139,16 +181,16 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
 	TorPlugin(Executor ioExecutor, ScheduledExecutorService scheduler,
 			Context appContext, LocationUtils locationUtils,
-			SocketFactory torSocketFactory, Clock clock, Backoff backoff,
+			SocketFactory torSocketFactory, Clock clock,
 			DuplexPluginCallback callback, String architecture,
-			CircumventionProvider circumventionProvider, int maxLatency, int maxIdleTime) {
+			CircumventionProvider circumventionProvider, int maxLatency,
+			int maxIdleTime) {
 		this.ioExecutor = ioExecutor;
 		this.scheduler = scheduler;
 		this.appContext = appContext;
 		this.locationUtils = locationUtils;
 		this.torSocketFactory = torSocketFactory;
 		this.clock = clock;
-		this.backoff = backoff;
 		this.callback = callback;
 		this.architecture = architecture;
 		this.circumventionProvider = circumventionProvider;
@@ -418,7 +460,6 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 			callback.mergeSettings(s);
 			// Create a hidden service if necessary
 			ioExecutor.execute(() -> publishHiddenService(localPort));
-			backoff.reset();
 			// Accept incoming hidden service connections from Tor
 			acceptContactConnections(ss);
 		});
@@ -485,7 +526,6 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 				return;
 			}
 			LOG.info("Connection received");
-			backoff.reset();
 			TorTransportConnection conn = new TorTransportConnection(this, s);
 			callback.incomingConnectionCreated(conn);
 		}
@@ -544,13 +584,18 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
 	@Override
 	public int getPollingInterval() {
-		return backoff.getPollingInterval();
+		if (connectionStatus.isDescriptorPublished()) {
+			LOG.info("Using stable polling interval");
+			return STABLE_POLLING_INTERVAL_MS;
+		} else {
+			LOG.info("Using initial polling interval");
+			return INITIAL_POLLING_INTERVAL_MS;
+		}
 	}
 
 	@Override
 	public void poll(Map<ContactId, TransportProperties> contacts) {
 		if (!isRunning()) return;
-		backoff.increment();
 		for (Entry<ContactId, TransportProperties> e : contacts.entrySet()) {
 			connectAndCallBack(e.getKey(), e.getValue());
 		}
@@ -559,10 +604,7 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	private void connectAndCallBack(ContactId c, TransportProperties p) {
 		ioExecutor.execute(() -> {
 			DuplexTransportConnection d = createConnection(p);
-			if (d != null) {
-				backoff.reset();
-				callback.outgoingConnectionCreated(c, d);
-			}
+			if (d != null) callback.outgoingConnectionCreated(c, d);
 		});
 	}
 
@@ -617,7 +659,6 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		if (status.equals("BUILT") &&
 				connectionStatus.getAndSetCircuitBuilt()) {
 			LOG.info("First circuit built");
-			backoff.reset();
 			if (isRunning()) callback.transportEnabled();
 		}
 	}
@@ -646,15 +687,16 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		if (LOG.isLoggable(INFO)) LOG.info(severity + " " + msg);
 		if (severity.equals("NOTICE") && msg.startsWith("Bootstrapped 100%")) {
 			connectionStatus.setBootstrapped();
-			backoff.reset();
 			if (isRunning()) callback.transportEnabled();
 		}
 	}
 
 	@Override
 	public void unrecognized(String type, String msg) {
-		if (type.equals("HS_DESC") && msg.startsWith("UPLOADED"))
+		if (type.equals("HS_DESC") && msg.startsWith("UPLOADED")) {
 			LOG.info("Descriptor uploaded");
+			connectionStatus.descriptorUploaded();
+		}
 	}
 
 	@Override
@@ -744,6 +786,7 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		// All of the following are locking: this
 		private boolean networkEnabled = false;
 		private boolean bootstrapped = false, circuitBuilt = false;
+		private int descriptorsUploaded = 0;
 
 		private synchronized void setBootstrapped() {
 			bootstrapped = true;
@@ -757,11 +800,22 @@ class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
 		private synchronized void enableNetwork(boolean enable) {
 			networkEnabled = enable;
-			if (!enable) circuitBuilt = false;
+			if (!enable) {
+				circuitBuilt = false;
+				descriptorsUploaded = 0;
+			}
+		}
+
+		private void descriptorUploaded() {
+			if (networkEnabled) descriptorsUploaded++;
 		}
 
 		private synchronized boolean isConnected() {
 			return networkEnabled && bootstrapped && circuitBuilt;
+		}
+
+		private synchronized boolean isDescriptorPublished() {
+			return descriptorsUploaded >= MIN_DESCRIPTORS_UPLOADED;
 		}
 	}
 }

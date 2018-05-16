@@ -107,7 +107,7 @@ public class AppModule {
 						appContext, random, eventBus, backoffFactory);
 		DuplexPluginFactory tor = new TorPluginFactory(ioExecutor, scheduler,
 				appContext, locationUtils, eventBus, torSocketFactory,
-				backoffFactory, circumventionProvider, clock);
+				circumventionProvider, clock);
 		DuplexPluginFactory lan = new AndroidLanTcpPluginFactory(ioExecutor,
 				scheduler, backoffFactory, appContext);
 		Collection<DuplexPluginFactory> duplex = asList(bluetooth, tor, lan);
