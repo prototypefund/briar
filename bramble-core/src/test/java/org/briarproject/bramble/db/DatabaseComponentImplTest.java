@@ -72,7 +72,6 @@ import static java.util.Collections.singletonList;
 import static org.briarproject.bramble.api.sync.Group.Visibility.INVISIBLE;
 import static org.briarproject.bramble.api.sync.Group.Visibility.SHARED;
 import static org.briarproject.bramble.api.sync.Group.Visibility.VISIBLE;
-import static org.briarproject.bramble.api.sync.SyncConstants.MAX_MESSAGE_LENGTH;
 import static org.briarproject.bramble.api.sync.validation.MessageState.DELIVERED;
 import static org.briarproject.bramble.api.sync.validation.MessageState.UNKNOWN;
 import static org.briarproject.bramble.api.transport.TransportConstants.REORDERING_WINDOW_SIZE;
@@ -865,8 +864,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getMessagesToSend(txn, contactId,
-					MAX_MESSAGE_LENGTH * 2, maxLatency);
+			oneOf(database).getMessagesToSend(txn, contactId, 2, maxLatency);
 			will(returnValue(ids));
 			oneOf(database).getMessage(txn, messageId);
 			will(returnValue(message));
@@ -885,7 +883,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		db.transaction(false, transaction ->
 				assertEquals(messages, db.generateBatch(transaction, contactId,
-						MAX_MESSAGE_LENGTH * 2, maxLatency)));
+						2, maxLatency)));
 	}
 
 	@Test
@@ -948,8 +946,8 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getRequestedMessagesToSend(txn, contactId,
-					MAX_MESSAGE_LENGTH * 2, maxLatency);
+			oneOf(database).getRequestedMessagesToSend(txn, contactId, 2,
+					maxLatency);
 			will(returnValue(ids));
 			oneOf(database).getMessage(txn, messageId);
 			will(returnValue(message));
@@ -968,7 +966,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		db.transaction(false, transaction ->
 				assertEquals(messages, db.generateRequestedBatch(transaction,
-						contactId, MAX_MESSAGE_LENGTH * 2, maxLatency)));
+						contactId, 2, maxLatency)));
 	}
 
 	@Test

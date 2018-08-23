@@ -467,12 +467,12 @@ interface Database<T> {
 
 	/**
 	 * Returns the IDs of some messages that are eligible to be sent to the
-	 * given contact, up to the given total length.
+	 * given contact, up to the given number of messages.
 	 * <p/>
 	 * Read-only.
 	 */
-	Collection<MessageId> getMessagesToSend(T txn, ContactId c, int maxLength,
-			int maxLatency) throws DbException;
+	Collection<MessageId> getMessagesToSend(T txn, ContactId c,
+			int maxMessages, int maxLatency) throws DbException;
 
 	/**
 	 * Returns the IDs of any messages that need to be validated.
@@ -525,12 +525,12 @@ interface Database<T> {
 	/**
 	 * Returns the IDs of some messages that are eligible to be sent to the
 	 * given contact and have been requested by the contact, up to the given
-	 * total length.
+	 * number of messages.
 	 * <p/>
 	 * Read-only.
 	 */
 	Collection<MessageId> getRequestedMessagesToSend(T txn, ContactId c,
-			int maxLength, int maxLatency) throws DbException;
+			int maxMessages, int maxLatency) throws DbException;
 
 	/**
 	 * Returns all settings in the given namespace.

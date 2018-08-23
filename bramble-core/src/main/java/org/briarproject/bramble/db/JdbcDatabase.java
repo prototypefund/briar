@@ -30,7 +30,6 @@ import org.briarproject.bramble.api.sync.Group;
 import org.briarproject.bramble.api.sync.Group.Visibility;
 import org.briarproject.bramble.api.sync.GroupId;
 import org.briarproject.bramble.api.sync.Message;
-import org.briarproject.bramble.api.sync.MessageFactory;
 import org.briarproject.bramble.api.sync.MessageId;
 import org.briarproject.bramble.api.sync.MessageStatus;
 import org.briarproject.bramble.api.sync.validation.MessageState;
@@ -76,7 +75,6 @@ import static org.briarproject.bramble.api.db.Metadata.REMOVE;
 import static org.briarproject.bramble.api.sync.Group.Visibility.INVISIBLE;
 import static org.briarproject.bramble.api.sync.Group.Visibility.SHARED;
 import static org.briarproject.bramble.api.sync.Group.Visibility.VISIBLE;
-import static org.briarproject.bramble.api.sync.SyncConstants.MESSAGE_HEADER_LENGTH;
 import static org.briarproject.bramble.api.sync.validation.MessageState.DELIVERED;
 import static org.briarproject.bramble.api.sync.validation.MessageState.PENDING;
 import static org.briarproject.bramble.api.sync.validation.MessageState.UNKNOWN;
@@ -98,7 +96,7 @@ import static org.briarproject.bramble.util.LogUtils.now;
 abstract class JdbcDatabase implements Database<Connection> {
 
 	// Package access for testing
-	static final int CODE_SCHEMA_VERSION = 47;
+	static final int CODE_SCHEMA_VERSION = 48;
 
 	// Time period offsets for incoming transport keys
 	private static final int OFFSET_PREV = -1;
@@ -180,8 +178,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 					+ " state INT NOT NULL,"
 					+ " shared BOOLEAN NOT NULL,"
 					+ " temporary BOOLEAN NOT NULL,"
-					+ " length INT NOT NULL,"
-					+ " raw BLOB," // Null if message has been deleted
+					+ " dataLength INT NOT NULL," // Excluding header
+					+ " deleted BOOLEAN NOT NULL,"
+					+ " blockCount INT NOT NULL,"
 					+ " PRIMARY KEY (messageId),"
 					+ " FOREIGN KEY (groupId)"
 					+ " REFERENCES groups (groupId)"
@@ -227,32 +226,60 @@ abstract class JdbcDatabase implements Database<Connection> {
 					+ " REFERENCES contacts (contactId)"
 					+ " ON DELETE CASCADE)";
 
-	private static final String CREATE_STATUSES =
-			"CREATE TABLE statuses"
-					+ " (messageId _HASH NOT NULL,"
+	private static final String CREATE_BLOCKS =
+			"CREATE TABLE blocks"
+					+ " (blockId _HASH NOT NULL,"
+					+ " groupId _HASH NOT NULL,"
+					+ " timestamp BIGINT NOT NULL,"
+					+ " blockCount INT NOT NULL,"
+					+ " blockNumber INT NOT NULL,"
+					+ " messageId _HASH," // Null if not yet known
+					+ " backHash _HASH," // Null for single block
+					+ " prevBackHash _HASH," // Null for single or first block
+					+ " nextBlockId _HASH," // Null for single or last block
+					+ " dataLength INT NOT NULL," // Excluding header
+					+ " data BLOB," // Null if message has been deleted
+					+ " PRIMARY KEY (blockId),"
+					+ " FOREIGN KEY (groupId)"
+					+ " REFERENCES groups (groupId)"
+					+ " ON DELETE CASCADE,"
+					+ " FOREIGN KEY (messageId)"
+					+ " REFERENCES messages (messageId)"
+					+ " ON DELETE CASCADE)";
+
+	private static final String CREATE_BLOCK_STATUSES =
+			"CREATE TABLE blockStatuses"
+					+ " (blockId _HASH NOT NULL,"
 					+ " contactId INT NOT NULL,"
 					+ " groupId _HASH NOT NULL," // Denormalised
 					+ " timestamp BIGINT NOT NULL," // Denormalised
-					+ " length INT NOT NULL," // Denormalised
-					+ " state INT NOT NULL," // Denormalised
+					+ " blockCount INT NOT NULL," // Denormalised
+					+ " blockNumber INT NOT NULL," // Denormalised
+					+ " messageId _HASH," // Denormalised, null if not yet known
 					+ " groupShared BOOLEAN NOT NULL," // Denormalised
 					+ " messageShared BOOLEAN NOT NULL," // Denormalised
 					+ " deleted BOOLEAN NOT NULL," // Denormalised
-					+ " ack BOOLEAN NOT NULL,"
+					+ " blocksToAck INT," // Non-null for first block in message
+					+ " blocksSeen INT," // Non-null for first block in message
+					+ " canSendOffer BOOLEAN NOT NULL,"
+					+ " sendAck BOOLEAN NOT NULL,"
 					+ " seen BOOLEAN NOT NULL,"
 					+ " requested BOOLEAN NOT NULL,"
 					+ " expiry BIGINT NOT NULL,"
 					+ " txCount INT NOT NULL,"
 					+ " eta BIGINT NOT NULL,"
-					+ " PRIMARY KEY (messageId, contactId),"
-					+ " FOREIGN KEY (messageId)"
-					+ " REFERENCES messages (messageId)"
+					+ " PRIMARY KEY (blockId, contactId),"
+					+ " FOREIGN KEY (blockId)"
+					+ " REFERENCES blocks (blockId)"
 					+ " ON DELETE CASCADE,"
 					+ " FOREIGN KEY (contactId)"
 					+ " REFERENCES contacts (contactId)"
 					+ " ON DELETE CASCADE,"
 					+ " FOREIGN KEY (groupId)"
 					+ " REFERENCES groups (groupId)"
+					+ " ON DELETE CASCADE,"
+					+ " FOREIGN KEY (messageId)"
+					+ " REFERENCES messages (messageId)"
 					+ " ON DELETE CASCADE)";
 
 	private static final String CREATE_TRANSPORTS =
@@ -328,18 +355,21 @@ abstract class JdbcDatabase implements Database<Connection> {
 			"CREATE INDEX IF NOT EXISTS messageDependenciesByDependencyId"
 					+ " ON messageDependencies (dependencyId)";
 
-	private static final String INDEX_STATUSES_BY_CONTACT_ID_GROUP_ID =
-			"CREATE INDEX IF NOT EXISTS statusesByContactIdGroupId"
-					+ " ON statuses (contactId, groupId)";
+	private static final String INDEX_BLOCK_STATUSES_BY_CONTACT_ID_GROUP_ID =
+			"CREATE INDEX IF NOT EXISTS blockStatusesByContactIdGroupId"
+					+ " ON blockStatuses (contactId, groupId)";
 
-	private static final String INDEX_STATUSES_BY_CONTACT_ID_TIMESTAMP =
-			"CREATE INDEX IF NOT EXISTS statusesByContactIdTimestamp"
-					+ " ON statuses (contactId, timestamp)";
+	private static final String INDEX_BLOCK_STATUSES_BY_CONTACT_ID_TIMESTAMP =
+			"CREATE INDEX IF NOT EXISTS blockStatusesByContactIdTimestamp"
+					+ " ON blockStatuses (contactId, timestamp)";
+
+	private static final String INDEX_BLOCK_STATUSES_BY_MESSAGE_ID_CONTACT_ID =
+			"CREATE INDEX IF NOT EXISTS blockStatusesByMessageIdContactId"
+					+ " ON blockStatuses (messageId, contactId)";
 
 	private static final Logger LOG =
 			getLogger(JdbcDatabase.class.getName());
 
-	private final MessageFactory messageFactory;
 	private final Clock clock;
 	private final DatabaseTypes dbTypes;
 
@@ -359,10 +389,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 
 	protected abstract void compactAndClose() throws DbException;
 
-	JdbcDatabase(DatabaseTypes databaseTypes, MessageFactory messageFactory,
-			Clock clock) {
+	JdbcDatabase(DatabaseTypes databaseTypes, Clock clock) {
 		this.dbTypes = databaseTypes;
-		this.messageFactory = messageFactory;
 		this.clock = clock;
 	}
 
@@ -440,10 +468,12 @@ abstract class JdbcDatabase implements Database<Connection> {
 				if (LOG.isLoggable(INFO))
 					LOG.info("Migrating from schema " + start + " to " + end);
 				if (listener != null) listener.onDatabaseMigration();
+				long startTime = now();
 				// Apply the migration
 				m.migrate(txn);
 				// Store the new schema version
 				storeSchemaVersion(txn, end);
+				logDuration(LOG, "Migration", startTime);
 				dataSchemaVersion = end;
 			}
 		}
@@ -463,7 +493,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 				new Migration43_44(dbTypes),
 				new Migration44_45(),
 				new Migration45_46(),
-				new Migration46_47(dbTypes)
+				new Migration46_47(dbTypes),
+				new Migration47_48(dbTypes)
 		);
 	}
 
@@ -509,7 +540,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_MESSAGE_METADATA));
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_MESSAGE_DEPENDENCIES));
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_OFFERS));
-			s.executeUpdate(dbTypes.replaceTypes(CREATE_STATUSES));
+			s.executeUpdate(dbTypes.replaceTypes(CREATE_BLOCKS));
+			s.executeUpdate(dbTypes.replaceTypes(CREATE_BLOCK_STATUSES));
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_TRANSPORTS));
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_PENDING_CONTACTS));
 			s.executeUpdate(dbTypes.replaceTypes(CREATE_OUTGOING_KEYS));
@@ -529,8 +561,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			s.executeUpdate(INDEX_GROUPS_BY_CLIENT_ID_MAJOR_VERSION);
 			s.executeUpdate(INDEX_MESSAGE_METADATA_BY_GROUP_ID_STATE);
 			s.executeUpdate(INDEX_MESSAGE_DEPENDENCIES_BY_DEPENDENCY_ID);
-			s.executeUpdate(INDEX_STATUSES_BY_CONTACT_ID_GROUP_ID);
-			s.executeUpdate(INDEX_STATUSES_BY_CONTACT_ID_TIMESTAMP);
+			s.executeUpdate(INDEX_BLOCK_STATUSES_BY_CONTACT_ID_GROUP_ID);
+			s.executeUpdate(INDEX_BLOCK_STATUSES_BY_CONTACT_ID_TIMESTAMP);
+			s.executeUpdate(INDEX_BLOCK_STATUSES_BY_MESSAGE_ID_CONTACT_ID);
 			s.close();
 		} catch (SQLException e) {
 			tryToClose(s, LOG, WARNING);
@@ -725,8 +758,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT messageId, timestamp, state, shared,"
-					+ " length, raw IS NULL"
+			String sql = "SELECT messageId, timestamp, shared, deleted"
 					+ " FROM messages"
 					+ " WHERE groupId = ?";
 			ps = txn.prepareStatement(sql);
@@ -735,13 +767,11 @@ abstract class JdbcDatabase implements Database<Connection> {
 			while (rs.next()) {
 				MessageId id = new MessageId(rs.getBytes(1));
 				long timestamp = rs.getLong(2);
-				MessageState state = MessageState.fromValue(rs.getInt(3));
-				boolean messageShared = rs.getBoolean(4);
-				int length = rs.getInt(5);
-				boolean deleted = rs.getBoolean(6);
+				boolean messageShared = rs.getBoolean(3);
+				boolean deleted = rs.getBoolean(4);
 				boolean seen = removeOfferedMessage(txn, c, id);
-				addStatus(txn, id, c, g, timestamp, length, state, groupShared,
-						messageShared, deleted, seen);
+				addStatus(txn, id, c, g, timestamp, groupShared, messageShared,
+						deleted, seen);
 			}
 			rs.close();
 			ps.close();
@@ -785,11 +815,13 @@ abstract class JdbcDatabase implements Database<Connection> {
 	public void addMessage(Connection txn, Message m, MessageState state,
 			boolean shared, boolean temporary, @Nullable ContactId sender)
 			throws DbException {
+		if (shared && state != DELIVERED) throw new IllegalArgumentException();
 		PreparedStatement ps = null;
 		try {
 			String sql = "INSERT INTO messages (messageId, groupId, timestamp,"
-					+ " state, shared, temporary, length, raw)"
-					+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+					+ " state, shared, temporary, dataLength, deleted,"
+					+ " blockCount)"
+					+ " VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, 1)";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getId().getBytes());
 			ps.setBytes(2, m.getGroupId().getBytes());
@@ -797,10 +829,21 @@ abstract class JdbcDatabase implements Database<Connection> {
 			ps.setInt(4, state.getValue());
 			ps.setBoolean(5, shared);
 			ps.setBoolean(6, temporary);
-			byte[] raw = messageFactory.getRawMessage(m);
-			ps.setInt(7, raw.length);
-			ps.setBytes(8, raw);
+			ps.setInt(7, m.getBody().length);
 			int affected = ps.executeUpdate();
+			if (affected != 1) throw new DbStateException();
+			ps.close();
+			sql = "INSERT INTO blocks (blockId, groupId, timestamp,"
+					+ " blockCount, blockNumber, messageId, dataLength, data)"
+					+ " VALUES (?, ?, ?, 1, 0, ?, ?, ?)";
+			ps = txn.prepareStatement(sql);
+			ps.setBytes(1, m.getId().getBytes()); // Block ID equals message ID
+			ps.setBytes(2, m.getGroupId().getBytes());
+			ps.setLong(3, m.getTimestamp());
+			ps.setBytes(4, m.getId().getBytes());
+			ps.setInt(5, m.getBody().length);
+			ps.setBytes(6, m.getBody());
+			affected = ps.executeUpdate();
 			if (affected != 1) throw new DbStateException();
 			ps.close();
 			// Create a status row for each contact that can see the group
@@ -811,7 +854,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 				boolean offered = removeOfferedMessage(txn, c, m.getId());
 				boolean seen = offered || c.equals(sender);
 				addStatus(txn, m.getId(), c, m.getGroupId(), m.getTimestamp(),
-						raw.length, state, e.getValue(), shared, false, seen);
+						e.getValue(), shared, false, seen);
 			}
 			// Update denormalised column in messageDependencies if dependency
 			// is in same group as dependent
@@ -862,26 +905,27 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	private void addStatus(Connection txn, MessageId m, ContactId c, GroupId g,
-			long timestamp, int length, MessageState state, boolean groupShared,
-			boolean messageShared, boolean deleted, boolean seen)
-			throws DbException {
+			long timestamp, boolean groupShared, boolean messageShared,
+			boolean deleted, boolean seen) throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "INSERT INTO statuses (messageId, contactId, groupId,"
-					+ " timestamp, length, state, groupShared, messageShared,"
-					+ " deleted, ack, seen, requested, expiry, txCount, eta)"
-					+ " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, 0, 0,"
-					+ " 0)";
+			String sql = "INSERT INTO blockStatuses (blockId, contactId,"
+					+ " groupId, timestamp, blockCount, blockNumber, messageId,"
+					+ " groupShared, messageShared, deleted, blocksToAck,"
+					+ " blocksSeen, canSendOffer, sendAck, seen, requested,"
+					+ " expiry, txCount, eta)"
+					+ " VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, 1, ?, TRUE, ?,"
+					+ " ?, FALSE, 0, 0, 0)";
 			ps = txn.prepareStatement(sql);
-			ps.setBytes(1, m.getBytes());
+			ps.setBytes(1, m.getBytes()); // Block ID equals message ID
 			ps.setInt(2, c.getInt());
 			ps.setBytes(3, g.getBytes());
 			ps.setLong(4, timestamp);
-			ps.setInt(5, length);
-			ps.setInt(6, state.getValue());
-			ps.setBoolean(7, groupShared);
-			ps.setBoolean(8, messageShared);
-			ps.setBoolean(9, deleted);
+			ps.setBytes(5, m.getBytes());
+			ps.setBoolean(6, groupShared);
+			ps.setBoolean(7, messageShared);
+			ps.setBoolean(8, deleted);
+			ps.setInt(9, seen ? 1 : 0);
 			ps.setBoolean(10, seen);
 			ps.setBoolean(11, seen);
 			int affected = ps.executeUpdate();
@@ -1243,9 +1287,10 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT NULL FROM statuses"
+			String sql = "SELECT NULL FROM blockStatuses"
 					+ " WHERE messageId = ? AND contactId = ?"
-					+ " AND messageShared = TRUE";
+					+ " AND blockCount = 1"
+					+ " AND messageShared = TRUE"; // TODO: Why this condition?
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -1290,15 +1335,21 @@ abstract class JdbcDatabase implements Database<Connection> {
 	public void deleteMessage(Connection txn, MessageId m) throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE messages SET raw = NULL WHERE messageId = ?";
+			String sql = "UPDATE messages SET deleted = TRUE"
+					+ " WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			int affected = ps.executeUpdate();
-			if (affected < 0) throw new DbStateException();
-			if (affected > 1) throw new DbStateException();
+			if (affected < 0 || affected > 1) throw new DbStateException();
 			ps.close();
-			// Update denormalised column in statuses
-			sql = "UPDATE statuses SET deleted = TRUE WHERE messageId = ?";
+			sql = "UPDATE blocks SET data = NULL WHERE messageId = ?";
+			ps = txn.prepareStatement(sql);
+			ps.setBytes(1, m.getBytes());
+			affected = ps.executeUpdate();
+			if (affected < 0) throw new DbStateException();
+			ps.close();
+			// Update denormalised column in blockStatuses
+			sql = "UPDATE blockStatuses SET deleted = TRUE WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			affected = ps.executeUpdate();
@@ -1692,7 +1743,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT groupId, timestamp, raw FROM messages"
+			String sql = "SELECT groupId, timestamp, deleted FROM messages"
 					+ " WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
@@ -1700,15 +1751,23 @@ abstract class JdbcDatabase implements Database<Connection> {
 			if (!rs.next()) throw new DbStateException();
 			GroupId g = new GroupId(rs.getBytes(1));
 			long timestamp = rs.getLong(2);
-			byte[] raw = rs.getBytes(3);
+			boolean deleted = rs.getBoolean(3);
 			if (rs.next()) throw new DbStateException();
 			rs.close();
 			ps.close();
-			if (raw == null) throw new MessageDeletedException();
-			if (raw.length <= MESSAGE_HEADER_LENGTH) throw new AssertionError();
-			byte[] body = new byte[raw.length - MESSAGE_HEADER_LENGTH];
-			System.arraycopy(raw, MESSAGE_HEADER_LENGTH, body, 0, body.length);
-			return new Message(m, g, timestamp, body);
+			if (deleted) throw new MessageDeletedException();
+			sql = "SELECT data FROM blocks"
+					+ " WHERE messageId = ? AND blockCount = 1";
+			ps = txn.prepareStatement(sql);
+			ps.setBytes(1, m.getBytes());
+			rs = ps.executeQuery();
+			if (!rs.next()) throw new DbStateException();
+			byte[] data = rs.getBytes(1);
+			if (data == null) throw new DbStateException();
+			if (rs.next()) throw new DbStateException();
+			rs.close();
+			ps.close();
+			return new Message(m, g, timestamp, data);
 		} catch (SQLException e) {
 			tryToClose(rs, LOG, WARNING);
 			tryToClose(ps, LOG, WARNING);
@@ -1769,7 +1828,6 @@ abstract class JdbcDatabase implements Database<Connection> {
 				// Return early if there are no matches
 				if (intersection.isEmpty()) return Collections.emptySet();
 			}
-			if (intersection == null) throw new AssertionError();
 			return intersection;
 		} catch (SQLException e) {
 			tryToClose(rs, LOG, WARNING);
@@ -1899,22 +1957,27 @@ abstract class JdbcDatabase implements Database<Connection> {
 	@Override
 	public Collection<MessageStatus> getMessageStatus(Connection txn,
 			ContactId c, GroupId g) throws DbException {
+		Set<MessageId> delivered = new HashSet<>(getMessageIds(txn, g));
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT messageId, txCount > 0, seen FROM statuses"
-					+ " WHERE groupId = ? AND contactId = ? AND state = ?";
+			String sql = "SELECT messageId, txCount > 0,"
+					+ " blocksSeen = blockCount"
+					+ " FROM blockStatuses"
+					+ " WHERE contactId = ? AND groupId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
-			ps.setBytes(1, g.getBytes());
-			ps.setInt(2, c.getInt());
-			ps.setInt(3, DELIVERED.getValue());
+			ps.setInt(1, c.getInt());
+			ps.setBytes(2, g.getBytes());
 			rs = ps.executeQuery();
 			List<MessageStatus> statuses = new ArrayList<>();
 			while (rs.next()) {
 				MessageId messageId = new MessageId(rs.getBytes(1));
-				boolean sent = rs.getBoolean(2);
-				boolean seen = rs.getBoolean(3);
-				statuses.add(new MessageStatus(messageId, c, sent, seen));
+				if (delivered.contains(messageId)) {
+					boolean sent = rs.getBoolean(2);
+					boolean seen = rs.getBoolean(3);
+					statuses.add(new MessageStatus(messageId, c, sent, seen));
+				}
 			}
 			rs.close();
 			ps.close();
@@ -1930,15 +1993,17 @@ abstract class JdbcDatabase implements Database<Connection> {
 	@Nullable
 	public MessageStatus getMessageStatus(Connection txn, ContactId c,
 			MessageId m) throws DbException {
+		if (getMessageState(txn, m) != DELIVERED) return null;
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT txCount > 0, seen FROM statuses"
-					+ " WHERE messageId = ? AND contactId = ? AND state = ?";
+			String sql = "SELECT txCount > 0, blocksSeen = blockCount"
+					+ " FROM blockStatuses"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
-			ps.setInt(3, DELIVERED.getValue());
 			rs = ps.executeQuery();
 			MessageStatus status = null;
 			if (rs.next()) {
@@ -2047,8 +2112,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT messageId FROM statuses"
-					+ " WHERE contactId = ? AND ack = TRUE"
+			String sql = "SELECT messageId FROM blockStatuses"
+					+ " WHERE contactId = ? AND blockCount = 1"
+					+ " AND sendAck = TRUE"
 					+ " LIMIT ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
@@ -2074,8 +2140,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT messageId FROM statuses"
-					+ " WHERE contactId = ? AND state = ?"
+			String sql = "SELECT messageId FROM blockStatuses"
+					+ " WHERE contactId = ? AND blockCount = 1"
 					+ " AND groupShared = TRUE AND messageShared = TRUE"
 					+ " AND deleted = FALSE"
 					+ " AND seen = FALSE AND requested = FALSE"
@@ -2083,10 +2149,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 					+ " ORDER BY timestamp LIMIT ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
-			ps.setInt(2, DELIVERED.getValue());
-			ps.setLong(3, now);
-			ps.setLong(4, eta);
-			ps.setInt(5, maxMessages);
+			ps.setLong(2, now);
+			ps.setLong(3, eta);
+			ps.setInt(4, maxMessages);
 			rs = ps.executeQuery();
 			List<MessageId> ids = new ArrayList<>();
 			while (rs.next()) ids.add(new MessageId(rs.getBytes(1)));
@@ -2127,33 +2192,27 @@ abstract class JdbcDatabase implements Database<Connection> {
 
 	@Override
 	public Collection<MessageId> getMessagesToSend(Connection txn, ContactId c,
-			int maxLength, int maxLatency) throws DbException {
+			int maxMessages, int maxLatency) throws DbException {
 		long now = clock.currentTimeMillis();
 		long eta = now + maxLatency;
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT length, messageId FROM statuses"
-					+ " WHERE contactId = ? AND state = ?"
+			String sql = "SELECT messageId FROM blockStatuses"
+					+ " WHERE contactId = ? AND blockCount = 1"
 					+ " AND groupShared = TRUE AND messageShared = TRUE"
 					+ " AND deleted = FALSE"
 					+ " AND seen = FALSE"
 					+ " AND (expiry <= ? OR eta > ?)"
-					+ " ORDER BY timestamp";
+					+ " ORDER BY timestamp LIMIT ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
-			ps.setInt(2, DELIVERED.getValue());
-			ps.setLong(3, now);
-			ps.setLong(4, eta);
+			ps.setLong(2, now);
+			ps.setLong(3, eta);
+			ps.setInt(4, maxMessages);
 			rs = ps.executeQuery();
 			List<MessageId> ids = new ArrayList<>();
-			int total = 0;
-			while (rs.next()) {
-				int length = rs.getInt(1);
-				if (total + length > maxLength) break;
-				ids.add(new MessageId(rs.getBytes(2)));
-				total += length;
-			}
+			while (rs.next()) ids.add(new MessageId(rs.getBytes(1)));
 			rs.close();
 			ps.close();
 			return ids;
@@ -2182,7 +2241,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 		ResultSet rs = null;
 		try {
 			String sql = "SELECT messageId FROM messages"
-					+ " WHERE state = ? AND raw IS NOT NULL";
+					+ " WHERE state = ? AND deleted = FALSE";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, state.getValue());
 			rs = ps.executeQuery();
@@ -2232,14 +2291,13 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT expiry FROM statuses"
-					+ " WHERE contactId = ? AND state = ?"
+			String sql = "SELECT expiry FROM blockStatuses"
+					+ " WHERE contactId = ? AND blockCount = 1"
 					+ " AND groupShared = TRUE AND messageShared = TRUE"
 					+ " AND deleted = FALSE AND seen = FALSE"
 					+ " ORDER BY expiry LIMIT 1";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
-			ps.setInt(2, DELIVERED.getValue());
 			rs = ps.executeQuery();
 			long nextSendTime = Long.MAX_VALUE;
 			if (rs.next()) {
@@ -2311,33 +2369,27 @@ abstract class JdbcDatabase implements Database<Connection> {
 
 	@Override
 	public Collection<MessageId> getRequestedMessagesToSend(Connection txn,
-			ContactId c, int maxLength, int maxLatency) throws DbException {
+			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		long now = clock.currentTimeMillis();
 		long eta = now + maxLatency;
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT length, messageId FROM statuses"
-					+ " WHERE contactId = ? AND state = ?"
+			String sql = "SELECT messageId FROM blockStatuses"
+					+ " WHERE contactId = ? AND blockCount = 1"
 					+ " AND groupShared = TRUE AND messageShared = TRUE"
 					+ " AND deleted = FALSE"
 					+ " AND seen = FALSE AND requested = TRUE"
 					+ " AND (expiry <= ? OR eta > ?)"
-					+ " ORDER BY timestamp";
+					+ " ORDER BY timestamp LIMIT ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
-			ps.setInt(2, DELIVERED.getValue());
-			ps.setLong(3, now);
-			ps.setLong(4, eta);
+			ps.setLong(2, now);
+			ps.setLong(3, eta);
+			ps.setInt(4, maxMessages);
 			rs = ps.executeQuery();
 			List<MessageId> ids = new ArrayList<>();
-			int total = 0;
-			while (rs.next()) {
-				int length = rs.getInt(1);
-				if (total + length > maxLength) break;
-				ids.add(new MessageId(rs.getBytes(2)));
-				total += length;
-			}
+			while (rs.next()) ids.add(new MessageId(rs.getBytes(1)));
 			rs.close();
 			ps.close();
 			return ids;
@@ -2499,8 +2551,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			Collection<MessageId> acked) throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET ack = FALSE"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses SET sendAck = FALSE"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(2, c.getInt());
 			for (MessageId m : acked) {
@@ -2526,8 +2579,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			Collection<MessageId> requested) throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET requested = FALSE"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses SET requested = FALSE"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(2, c.getInt());
 			for (MessageId m : requested) {
@@ -2742,8 +2796,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET ack = TRUE"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses SET sendAck = TRUE"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -2761,8 +2816,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET requested = TRUE"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses SET requested = TRUE"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -2780,8 +2836,10 @@ abstract class JdbcDatabase implements Database<Connection> {
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET seen = TRUE"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses"
+					+ " SET seen = TRUE, blocksSeen = 1"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -2840,8 +2898,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 			int affected = ps.executeUpdate();
 			if (affected != 1) throw new DbStateException();
 			ps.close();
-			// Remove status rows for the messages in the group
-			sql = "DELETE FROM statuses"
+			// Remove status rows for any blocks in the group
+			sql = "DELETE FROM blockStatuses"
 					+ " WHERE contactId = ? AND groupId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
@@ -3007,8 +3065,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
-			String sql = "UPDATE statuses SET expiry = 0, txCount = 0"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "UPDATE blockStatuses SET expiry = 0, txCount = 0"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -3072,8 +3131,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 			int affected = ps.executeUpdate();
 			if (affected < 0 || affected > 1) throw new DbStateException();
 			ps.close();
-			// Update denormalised column in statuses
-			sql = "UPDATE statuses SET groupShared = ?"
+			// Update denormalised column in blockStatuses
+			sql = "UPDATE blockStatuses SET groupShared = ?"
 					+ " WHERE contactId = ? AND groupId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBoolean(1, shared);
@@ -3139,8 +3198,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 			int affected = ps.executeUpdate();
 			if (affected < 0 || affected > 1) throw new DbStateException();
 			ps.close();
-			// Update denormalised column in statuses
-			sql = "UPDATE statuses SET messageShared = TRUE"
+			// Update denormalised column in blockStatuses
+			sql = "UPDATE blockStatuses SET messageShared = TRUE"
 					+ " WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
@@ -3167,14 +3226,6 @@ abstract class JdbcDatabase implements Database<Connection> {
 			ps.close();
 			// Update denormalised column in messageMetadata
 			sql = "UPDATE messageMetadata SET state = ? WHERE messageId = ?";
-			ps = txn.prepareStatement(sql);
-			ps.setInt(1, state.getValue());
-			ps.setBytes(2, m.getBytes());
-			affected = ps.executeUpdate();
-			if (affected < 0) throw new DbStateException();
-			ps.close();
-			// Update denormalised column in statuses
-			sql = "UPDATE statuses SET state = ? WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, state.getValue());
 			ps.setBytes(2, m.getBytes());
@@ -3278,8 +3329,9 @@ abstract class JdbcDatabase implements Database<Connection> {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT txCount FROM statuses"
-					+ " WHERE messageId = ? AND contactId = ?";
+			String sql = "SELECT txCount FROM blockStatuses"
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -3289,9 +3341,10 @@ abstract class JdbcDatabase implements Database<Connection> {
 			if (rs.next()) throw new DbStateException();
 			rs.close();
 			ps.close();
-			sql = "UPDATE statuses"
+			sql = "UPDATE blockStatuses"
 					+ " SET expiry = ?, txCount = txCount + 1, eta = ?"
-					+ " WHERE messageId = ? AND contactId = ?";
+					+ " WHERE messageId = ? AND contactId = ?"
+					+ " AND blockCount = 1";
 			ps = txn.prepareStatement(sql);
 			long now = clock.currentTimeMillis();
 			long eta = now + maxLatency;

@@ -32,7 +32,6 @@ import static java.util.logging.Level.INFO;
 import static java.util.logging.Level.WARNING;
 import static java.util.logging.Logger.getLogger;
 import static org.briarproject.bramble.api.lifecycle.LifecycleManager.LifecycleState.STOPPING;
-import static org.briarproject.bramble.api.record.Record.MAX_RECORD_PAYLOAD_BYTES;
 import static org.briarproject.bramble.api.sync.SyncConstants.MAX_MESSAGE_IDS;
 import static org.briarproject.bramble.api.sync.SyncConstants.SUPPORTED_VERSIONS;
 import static org.briarproject.bramble.util.LogUtils.logException;
@@ -48,6 +47,8 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 
 	private static final Logger LOG =
 			getLogger(SimplexOutgoingSession.class.getName());
+
+	private static final int MAX_MESSAGES_PER_BATCH = 10;
 
 	private static final ThrowingRunnable<IOException> CLOSE = () -> {
 	};
@@ -174,7 +175,7 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 				Collection<Message> b =
 						db.transactionWithNullableResult(false, txn ->
 								db.generateBatch(txn, contactId,
-										MAX_RECORD_PAYLOAD_BYTES, maxLatency));
+										MAX_MESSAGES_PER_BATCH, maxLatency));
 				if (LOG.isLoggable(INFO))
 					LOG.info("Generated batch: " + (b != null));
 				if (b == null) decrementOutstandingQueries();

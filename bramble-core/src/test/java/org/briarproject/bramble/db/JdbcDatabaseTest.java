@@ -235,51 +235,6 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 	}
 
 	@Test
-	public void testSendableMessagesMustBeDelivered() throws Exception {
-		Database<Connection> db = open(false);
-		Connection txn = db.startTransaction();
-
-		// Add a contact, a shared group and a shared but unvalidated message
-		db.addIdentity(txn, identity);
-		assertEquals(contactId,
-				db.addContact(txn, author, localAuthor.getId(), null, true));
-		db.addGroup(txn, group);
-		db.addGroupVisibility(txn, contactId, groupId, true);
-		db.addMessage(txn, message, UNKNOWN, true, false, null);
-
-		// The message has not been validated, so it should not be sendable
-		Collection<MessageId> ids = db.getMessagesToSend(txn, contactId,
-				ONE_MEGABYTE, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-		ids = db.getMessagesToOffer(txn, contactId, 100, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-
-		// Marking the message delivered should make it sendable
-		db.setMessageState(txn, messageId, DELIVERED);
-		ids = db.getMessagesToSend(txn, contactId, ONE_MEGABYTE, MAX_LATENCY);
-		assertEquals(singletonList(messageId), ids);
-		ids = db.getMessagesToOffer(txn, contactId, 100, MAX_LATENCY);
-		assertEquals(singletonList(messageId), ids);
-
-		// Marking the message invalid should make it unsendable
-		db.setMessageState(txn, messageId, INVALID);
-		ids = db.getMessagesToSend(txn, contactId, ONE_MEGABYTE, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-		ids = db.getMessagesToOffer(txn, contactId, 100, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-
-		// Marking the message pending should make it unsendable
-		db.setMessageState(txn, messageId, PENDING);
-		ids = db.getMessagesToSend(txn, contactId, ONE_MEGABYTE, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-		ids = db.getMessagesToOffer(txn, contactId, 100, MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-
-		db.commitTransaction(txn);
-		db.close();
-	}
-
-	@Test
 	public void testSendableMessagesMustHaveSharedGroup() throws Exception {
 		Database<Connection> db = open(false);
 		Connection txn = db.startTransaction();
@@ -362,33 +317,6 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 	}
 
 	@Test
-	public void testSendableMessagesMustFitCapacity() throws Exception {
-		Database<Connection> db = open(false);
-		Connection txn = db.startTransaction();
-
-		// Add a contact, a shared group and a shared message
-		db.addIdentity(txn, identity);
-		assertEquals(contactId,
-				db.addContact(txn, author, localAuthor.getId(), null, true));
-		db.addGroup(txn, group);
-		db.addGroupVisibility(txn, contactId, groupId, true);
-		db.addMessage(txn, message, DELIVERED, true, false, null);
-
-		// The message is sendable, but too large to send
-		Collection<MessageId> ids =
-				db.getMessagesToSend(txn, contactId, message.getRawLength() - 1,
-						MAX_LATENCY);
-		assertTrue(ids.isEmpty());
-		// The message is just the right size to send
-		ids = db.getMessagesToSend(txn, contactId, message.getRawLength(),
-				MAX_LATENCY);
-		assertEquals(singletonList(messageId), ids);
-
-		db.commitTransaction(txn);
-		db.close();
-	}
-
-	@Test
 	public void testMessagesToAck() throws Exception {
 		Database<Connection> db = open(false);
 		Connection txn = db.startTransaction();
@@ -414,8 +342,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 		db.lowerAckFlag(txn, contactId, asList(messageId, messageId1));
 
 		// Both message IDs should have been removed
-		assertEquals(emptyList(), db.getMessagesToAck(txn,
-				contactId, 1234));
+		assertEquals(emptyList(), db.getMessagesToAck(txn, contactId, 1234));
 
 		// Raise the ack flag again
 		db.raiseAckFlag(txn, contactId, messageId);
@@ -1574,9 +1501,9 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 
 		// Add a group and some messages
 		db.addGroup(txn, group);
-		db.addMessage(txn, message, PENDING, true, false, contactId);
-		db.addMessage(txn, message1, PENDING, true, false, contactId);
-		db.addMessage(txn, message2, INVALID, true, false, contactId);
+		db.addMessage(txn, message, PENDING, false, false, contactId);
+		db.addMessage(txn, message1, PENDING, false, false, contactId);
+		db.addMessage(txn, message2, INVALID, false, false, contactId);
 
 		// Add dependencies
 		db.addMessageDependency(txn, message, messageId1, PENDING);
@@ -1657,7 +1584,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 
 		// Add a group and a message
 		db.addGroup(txn, group);
-		db.addMessage(txn, message, PENDING, true, false, contactId);
+		db.addMessage(txn, message, PENDING, false, false, contactId);
 
 		// Add a second group
 		Group group1 = getGroup(clientId, 123);
@@ -1718,9 +1645,9 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 
 		// Add a group and some messages with different states
 		db.addGroup(txn, group);
-		db.addMessage(txn, message1, UNKNOWN, true, false, contactId);
-		db.addMessage(txn, message2, INVALID, true, false, contactId);
-		db.addMessage(txn, message3, PENDING, true, false, contactId);
+		db.addMessage(txn, message1, UNKNOWN, false, false, contactId);
+		db.addMessage(txn, message2, INVALID, false, false, contactId);
+		db.addMessage(txn, message3, PENDING, false, false, contactId);
 		db.addMessage(txn, message4, DELIVERED, true, false, contactId);
 
 		Collection<MessageId> result;

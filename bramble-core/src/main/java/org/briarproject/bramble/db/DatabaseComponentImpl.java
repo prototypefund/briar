@@ -406,13 +406,13 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	@Nullable
 	@Override
 	public Collection<Message> generateBatch(Transaction transaction,
-			ContactId c, int maxLength, int maxLatency) throws DbException {
+			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
 		Collection<MessageId> ids =
-				db.getMessagesToSend(txn, c, maxLength, maxLatency);
+				db.getMessagesToSend(txn, c, maxMessages, maxLatency);
 		List<Message> messages = new ArrayList<>(ids.size());
 		for (MessageId m : ids) {
 			messages.add(db.getMessage(txn, m));
@@ -458,13 +458,13 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	@Nullable
 	@Override
 	public Collection<Message> generateRequestedBatch(Transaction transaction,
-			ContactId c, int maxLength, int maxLatency) throws DbException {
+			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
-		Collection<MessageId> ids =
-				db.getRequestedMessagesToSend(txn, c, maxLength, maxLatency);
+		Collection<MessageId> ids = db.getRequestedMessagesToSend(txn, c,
+				maxMessages, maxLatency);
 		List<Message> messages = new ArrayList<>(ids.size());
 		for (MessageId m : ids) {
 			messages.add(db.getMessage(txn, m));
