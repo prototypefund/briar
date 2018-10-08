@@ -7,7 +7,6 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
-import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,10 +17,12 @@ import org.acra.builder.ReportBuilder;
 import org.acra.builder.ReportPrimer;
 import org.briarproject.bramble.util.StringUtils;
 import org.briarproject.briar.BuildConfig;
+import org.briarproject.briar.android.AndroidComponent;
 import org.briarproject.briar.android.BriarApplication;
-import org.briarproject.briar.android.logging.BriefLogFormatter;
+import org.briarproject.briar.api.logging.PersistentLogManager;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -37,11 +38,13 @@ import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE;
 import static android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
 import static android.content.Context.ACTIVITY_SERVICE;
 import static android.content.Context.CONNECTIVITY_SERVICE;
+import static android.content.Context.MODE_PRIVATE;
 import static android.content.Context.WIFI_P2P_SERVICE;
 import static android.content.Context.WIFI_SERVICE;
 import static android.net.ConnectivityManager.TYPE_MOBILE;
 import static android.net.ConnectivityManager.TYPE_WIFI;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
+import static android.os.Build.VERSION.SDK_INT;
 import static org.briarproject.bramble.util.PrivacyUtils.scrubMacAddress;
 
 public class BriarReportPrimer implements ReportPrimer {
@@ -76,12 +79,27 @@ public class BriarReportPrimer implements ReportPrimer {
 			// Log
 			BriarApplication app =
 					(BriarApplication) ctx.getApplicationContext();
+			AndroidComponent appComponent = app.getApplicationComponent();
+			PersistentLogManager logManager =
+					appComponent.persistentLogManager();
+			Formatter formatter = appComponent.formatter();
+
 			StringBuilder sb = new StringBuilder();
-			Formatter formatter = new BriefLogFormatter();
 			for (LogRecord record : app.getRecentLogRecords()) {
-				sb.append(formatter.format(record)).append('\n');
+				sb.append(formatter.format(record));
 			}
 			customData.put("Log", sb.toString());
+
+			sb = new StringBuilder();
+			try {
+				File logDir = ctx.getDir("log", MODE_PRIVATE);
+				for (String line : logManager.getPersistedLog(logDir)) {
+					sb.append(line).append('\n');
+				}
+			} catch (IOException e) {
+				sb.append("Could not recover persisted log: ").append(e);
+			}
+			customData.put("Persisted log", sb.toString());
 
 			// System memory
 			Object o = ctx.getSystemService(ACTIVITY_SERVICE);
@@ -89,7 +107,7 @@ public class BriarReportPrimer implements ReportPrimer {
 			ActivityManager.MemoryInfo mem = new ActivityManager.MemoryInfo();
 			am.getMemoryInfo(mem);
 			String systemMemory;
-			if (Build.VERSION.SDK_INT >= 16) {
+			if (SDK_INT >= 16) {
 				systemMemory = (mem.totalMem / 1024 / 1024) + " MiB total, "
 						+ (mem.availMem / 1024 / 1204) + " MiB free, "
 						+ (mem.threshold / 1024 / 1024) + " MiB threshold";
@@ -212,7 +230,7 @@ public class BriarReportPrimer implements ReportPrimer {
 					bt.getScanMode() == SCAN_MODE_CONNECTABLE_DISCOVERABLE;
 			// Is Bluetooth LE scanning and advertising supported?
 			boolean btLeApi = false, btLeScan = false, btLeAdvertise = false;
-			if (bt != null && Build.VERSION.SDK_INT >= 21) {
+			if (bt != null && SDK_INT >= 21) {
 				btLeApi = true;
 				btLeScan = bt.getBluetoothLeScanner() != null;
 				btLeAdvertise = bt.getBluetoothLeAdvertiser() != null;

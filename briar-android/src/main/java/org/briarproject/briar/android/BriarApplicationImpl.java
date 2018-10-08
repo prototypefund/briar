@@ -23,14 +23,19 @@ import org.briarproject.briar.android.reporting.BriarReportPrimer;
 import org.briarproject.briar.android.reporting.BriarReportSenderFactory;
 import org.briarproject.briar.android.reporting.DevReportActivity;
 import org.briarproject.briar.android.util.UiUtils;
+import org.briarproject.briar.api.logging.PersistentLogManager;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.Collection;
+import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static java.util.logging.Level.FINE;
 import static java.util.logging.Level.INFO;
+import static java.util.logging.Level.WARNING;
 import static org.acra.ReportField.ANDROID_VERSION;
 import static org.acra.ReportField.APP_VERSION_CODE;
 import static org.acra.ReportField.APP_VERSION_NAME;
@@ -48,6 +53,7 @@ import static org.acra.ReportField.REPORT_ID;
 import static org.acra.ReportField.STACK_TRACE;
 import static org.acra.ReportField.USER_APP_START_DATE;
 import static org.acra.ReportField.USER_CRASH_DATE;
+import static org.briarproject.bramble.util.LogUtils.logException;
 import static org.briarproject.briar.android.TestingConstants.IS_BETA_BUILD;
 import static org.briarproject.briar.android.TestingConstants.IS_DEBUG_BUILD;
 
@@ -110,9 +116,22 @@ public class BriarApplicationImpl extends Application
 		rootLogger.addHandler(logHandler);
 		rootLogger.setLevel(IS_DEBUG_BUILD || IS_BETA_BUILD ? FINE : INFO);
 
+		applicationComponent = createApplicationComponent();
+
+		PersistentLogManager logManager =
+				applicationComponent.persistentLogManager();
+		Formatter formatter = applicationComponent.formatter();
+		try {
+			File logDir = getDir("log", MODE_PRIVATE);
+			Handler handler = logManager.createLogHandler(logDir);
+			handler.setFormatter(formatter);
+			rootLogger.addHandler(handler);
+		} catch (IOException e) {
+			logException(LOG, WARNING, e);
+		}
+
 		LOG.info("Created");
 
-		applicationComponent = createApplicationComponent();
 		EmojiManager.install(new GoogleEmojiProvider());
 	}
 

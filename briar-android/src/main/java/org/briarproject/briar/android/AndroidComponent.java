@@ -41,6 +41,7 @@ import org.briarproject.briar.api.feed.FeedManager;
 import org.briarproject.briar.api.forum.ForumManager;
 import org.briarproject.briar.api.forum.ForumSharingManager;
 import org.briarproject.briar.api.introduction.IntroductionManager;
+import org.briarproject.briar.api.logging.PersistentLogManager;
 import org.briarproject.briar.api.messaging.ConversationManager;
 import org.briarproject.briar.api.messaging.MessagingManager;
 import org.briarproject.briar.api.messaging.PrivateMessageFactory;
@@ -52,6 +53,7 @@ import org.briarproject.briar.api.privategroup.invitation.GroupInvitationManager
 import org.briarproject.briar.api.test.TestDataCreator;
 
 import java.util.concurrent.Executor;
+import java.util.logging.Formatter;
 
 import javax.inject.Singleton;
 
@@ -153,6 +155,10 @@ public interface AndroidComponent
 	LocationUtils locationUtils();
 
 	CircumventionProvider circumventionProvider();
+
+	PersistentLogManager persistentLogManager();
+
+	Formatter formatter();
 
 	void inject(SignInReminderReceiver briarService);
 
