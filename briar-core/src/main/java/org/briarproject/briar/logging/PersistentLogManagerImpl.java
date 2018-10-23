@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.Logger;
@@ -62,6 +63,7 @@ class PersistentLogManagerImpl implements PersistentLogManager, Client {
 	private final StreamWriterFactory streamWriterFactory;
 	private final Formatter formatter;
 	private final SecretKey logKey;
+	private final AtomicBoolean handlerCreated = new AtomicBoolean(false);
 
 	@Nullable
 	private volatile SecretKey oldLogKey = null;
@@ -102,6 +104,7 @@ class PersistentLogManagerImpl implements PersistentLogManager, Client {
 
 	@Override
 	public Handler createLogHandler(File dir) throws IOException {
+		if (handlerCreated.getAndSet(true)) throw new IllegalStateException();
 		File logFile = new File(dir, LOG_FILE);
 		File oldLogFile = new File(dir, OLD_LOG_FILE);
 		if (oldLogFile.exists() && !oldLogFile.delete())
