@@ -61,7 +61,7 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			oneOf(db).transactionWithNullableResult(with(false),
 					withNullableDbCallable(noMsgTxn));
 			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
-					with(any(int.class)), with(MAX_LATENCY));
+					with(any(int.class)), with(MAX_LATENCY), with(true));
 			will(returnValue(null));
 			// Send the end of stream marker
 			oneOf(streamWriter).sendEndOfStream();
@@ -98,7 +98,7 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			oneOf(db).transactionWithNullableResult(with(false),
 					withNullableDbCallable(msgTxn));
 			oneOf(db).generateBatch(with(msgTxn), with(contactId),
-					with(any(int.class)), with(MAX_LATENCY));
+					with(any(int.class)), with(MAX_LATENCY), with(true));
 			will(returnValue(singletonList(message)));
 			oneOf(recordWriter).writeMessage(message);
 			// No more acks
@@ -110,7 +110,7 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			oneOf(db).transactionWithNullableResult(with(false),
 					withNullableDbCallable(noMsgTxn));
 			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
-					with(any(int.class)), with(MAX_LATENCY));
+					with(any(int.class)), with(MAX_LATENCY), with(true));
 			will(returnValue(null));
 			// Send the end of stream marker
 			oneOf(streamWriter).sendEndOfStream();
