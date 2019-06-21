@@ -40,7 +40,6 @@ import org.junit.Test;
 
 import java.io.File;
 import java.sql.Connection;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -1144,35 +1143,6 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 		contacts = db.getContacts(txn, localAuthor.getId());
 		assertEquals(emptyList(), contacts);
 		assertFalse(db.containsContact(txn, contactId));
-
-		db.commitTransaction(txn);
-		db.close();
-	}
-
-	@Test
-	public void testOfferedMessages() throws Exception {
-		Database<Connection> db = open(false);
-		Connection txn = db.startTransaction();
-
-		// Add a contact - initially there should be no offered messages
-		db.addIdentity(txn, identity);
-		assertEquals(contactId,
-				db.addContact(txn, author, localAuthor.getId(), null, true));
-		assertEquals(0, db.countOfferedMessages(txn, contactId));
-
-		// Add some offered messages and count them
-		List<MessageId> ids = new ArrayList<>();
-		for (int i = 0; i < 10; i++) {
-			MessageId m = new MessageId(getRandomId());
-			db.addOfferedMessage(txn, contactId, m);
-			ids.add(m);
-		}
-		assertEquals(10, db.countOfferedMessages(txn, contactId));
-
-		// Remove some of the offered messages and count again
-		List<MessageId> half = ids.subList(0, 5);
-		db.removeOfferedMessages(txn, contactId, half);
-		assertEquals(5, db.countOfferedMessages(txn, contactId));
 
 		db.commitTransaction(txn);
 		db.close();
