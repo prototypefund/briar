@@ -111,8 +111,7 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	private final CircumventionProvider circumventionProvider;
 	private final ResourceProvider resourceProvider;
 	private final int maxLatency, maxIdleTime, socketTimeout;
-	private final File torDirectory, torFile, geoIpFile, obfs4File, configFile;
-	private final File doneFile, cookieFile;
+	private final File torDirectory, geoIpFile, configFile, doneFile, cookieFile;
 	private final ConnectionStatus connectionStatus;
 	private final AtomicBoolean used = new AtomicBoolean(false);
 
@@ -153,9 +152,7 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 			socketTimeout = Integer.MAX_VALUE;
 		else socketTimeout = maxIdleTime * 2;
 		this.torDirectory = torDirectory;
-		torFile = new File(torDirectory, "tor");
 		geoIpFile = new File(torDirectory, "geoip");
-		obfs4File = new File(torDirectory, "obfs4proxy");
 		configFile = new File(torDirectory, "torrc");
 		doneFile = new File(torDirectory, "done");
 		cookieFile = new File(torDirectory, ".tor/control_auth_cookie");
@@ -163,6 +160,14 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		// Don't execute more than one connection status check at a time
 		connectionStatusExecutor =
 				new PoliteExecutor("TorPlugin", ioExecutor, 1);
+	}
+
+	protected File getTorExecutableFile() {
+		return new File(torDirectory, "tor");
+	}
+
+	protected File getObfs4ExecutableFile() {
+		return new File(torDirectory, "obfs4proxy");
 	}
 
 	@Override
@@ -199,6 +204,7 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		migrateSettings();
 		// Start a new Tor process
 		LOG.info("Starting Tor");
+		File torFile = getTorExecutableFile();
 		String torPath = torFile.getAbsolutePath();
 		String configPath = configFile.getAbsolutePath();
 		String pid = String.valueOf(getProcessId());
@@ -285,44 +291,43 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	}
 
 	private void installAssets() throws PluginException {
-		InputStream in = null;
-		OutputStream out = null;
 		try {
 			// The done file may already exist from a previous installation
 			//noinspection ResultOfMethodCallIgnored
 			doneFile.delete();
-			// Unzip the Tor binary to the filesystem
-			in = getTorInputStream();
-			out = new FileOutputStream(torFile);
-			copyAndClose(in, out);
-			// Make the Tor binary executable
-			if (!torFile.setExecutable(true, true)) throw new IOException();
-			// Unzip the GeoIP database to the filesystem
-			in = getGeoIpInputStream();
-			out = new FileOutputStream(geoIpFile);
-			copyAndClose(in, out);
-			// Unzip the Obfs4 proxy to the filesystem
-			in = getObfs4InputStream();
-			out = new FileOutputStream(obfs4File);
-			copyAndClose(in, out);
-			// Make the Obfs4 proxy executable
-			if (!obfs4File.setExecutable(true, true)) throw new IOException();
-			// Copy the config file to the filesystem
-			in = getConfigInputStream();
-			out = new FileOutputStream(configFile);
-			copyAndClose(in, out);
+			installTorExecutable();
+			installObfs4Executable();
+			extract(getGeoIpInputStream(), geoIpFile);
+			extract(getConfigInputStream(), configFile);
 			if (!doneFile.createNewFile())
 				LOG.warning("Failed to create done file");
 		} catch (IOException e) {
-			tryToClose(in, LOG, WARNING);
-			tryToClose(out, LOG, WARNING);
 			throw new PluginException(e);
 		}
 	}
 
-	private InputStream getTorInputStream() throws IOException {
+	private void extract(InputStream in, File dest) throws IOException {
+		OutputStream out = new FileOutputStream(dest);
+		copyAndClose(in, out);
+	}
+
+	protected void installTorExecutable() throws IOException {
 		if (LOG.isLoggable(INFO))
 			LOG.info("Installing Tor binary for " + architecture);
+		File torFile = getTorExecutableFile();
+		extract(getTorInputStream(), torFile);
+		if (!torFile.setExecutable(true, true)) throw new IOException();
+	}
+
+	protected void installObfs4Executable() throws IOException {
+		if (LOG.isLoggable(INFO))
+			LOG.info("Installing obfs4proxy binary for " + architecture);
+		File obfs4File = getObfs4ExecutableFile();
+		extract(getObfs4InputStream(), obfs4File);
+		if (!obfs4File.setExecutable(true, true)) throw new IOException();
+	}
+
+	private InputStream getTorInputStream() throws IOException {
 		InputStream in = resourceProvider
 				.getResourceInputStream("tor_" + architecture, ".zip");
 		ZipInputStream zin = new ZipInputStream(in);
@@ -339,8 +344,6 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 	}
 
 	private InputStream getObfs4InputStream() throws IOException {
-		if (LOG.isLoggable(INFO))
-			LOG.info("Installing obfs4proxy binary for " + architecture);
 		InputStream in = resourceProvider
 				.getResourceInputStream("obfs4proxy_" + architecture, ".zip");
 		ZipInputStream zin = new ZipInputStream(in);
@@ -480,6 +483,7 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		if (enable) {
 			Collection<String> conf = new ArrayList<>();
 			conf.add("UseBridges 1");
+			File obfs4File = getObfs4ExecutableFile();
 			if (needsMeek) {
 				conf.add("ClientTransportPlugin meek_lite exec " +
 						obfs4File.getAbsolutePath());

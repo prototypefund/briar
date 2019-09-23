@@ -17,6 +17,7 @@ import org.briarproject.bramble.api.system.LocationUtils;
 import org.briarproject.bramble.api.system.ResourceProvider;
 import org.briarproject.bramble.util.RenewableWakeLock;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -25,6 +26,7 @@ import javax.net.SocketFactory;
 
 import static android.content.Context.MODE_PRIVATE;
 import static android.content.Context.POWER_SERVICE;
+import static android.os.Build.VERSION.SDK_INT;
 import static android.os.PowerManager.PARTIAL_WAKE_LOCK;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
@@ -97,5 +99,32 @@ class AndroidTorPlugin extends TorPlugin {
 			}
 		}
 		return getClass().getSimpleName();
+	}
+
+	@Override
+	protected File getTorExecutableFile() {
+		if (SDK_INT >= 16) return new File(getNativeLibDir(), "libtor.so");
+		else return super.getTorExecutableFile();
+	}
+
+	@Override
+	protected File getObfs4ExecutableFile() {
+		if (SDK_INT >= 16)
+			return new File(getNativeLibDir(), "libobfs4proxy.so");
+		else return super.getObfs4ExecutableFile();
+	}
+
+	private File getNativeLibDir() {
+		return new File(appContext.getApplicationInfo().nativeLibraryDir);
+	}
+
+	@Override
+	protected void installTorExecutable() throws IOException {
+		if (SDK_INT < 16) super.installTorExecutable();
+	}
+
+	@Override
+	protected void installObfs4Executable() throws IOException {
+		if (SDK_INT < 16) super.installObfs4Executable();
 	}
 }
