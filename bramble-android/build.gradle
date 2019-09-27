@@ -62,24 +62,32 @@ task unpackTorBinaries {
 			from configurations.tor.collect { zipTree(it) }
 			into torBinariesDir
 			include 'geoip.zip'
-			include 'tor_arm.zip'
-			include 'tor_x86.zip'
-			include 'obfs4proxy_arm.zip'
-			include 'obfs4proxy_x86.zip'
 		}
 		configurations.tor.each { outer ->
 			zipTree(outer).each { inner ->
-				if (inner.name.endsWith('_arm_pie.zip')) {
+				if (inner.name.endsWith('_arm.zip')) {
 					copy {
 						from zipTree(inner)
 						into torLibsDir
 						rename '(.*)', 'armeabi-v7a/lib$1.so'
 					}
-				} else if (inner.name.endsWith('_x86_pie.zip')) {
+				} else if (inner.name.endsWith('_arm_pie.zip')) {
+					copy {
+						from zipTree(inner)
+						into torLibsDir
+						rename '(.*)', 'armeabi-v7a/lib$1_pie.so'
+					}
+				} else if (inner.name.endsWith('_x86.zip')) {
 					copy {
 						from zipTree(inner)
 						into torLibsDir
 						rename '(.*)', 'x86/lib$1.so'
+					}
+				} else if (inner.name.endsWith('_x86_pie.zip')) {
+					copy {
+						from zipTree(inner)
+						into torLibsDir
+						rename '(.*)', 'x86/lib$1_pie.so'
 					}
 				}
 			}

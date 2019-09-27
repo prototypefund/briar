@@ -18,6 +18,7 @@ import org.briarproject.bramble.api.system.ResourceProvider;
 import org.briarproject.bramble.util.RenewableWakeLock;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
@@ -36,6 +37,7 @@ class AndroidTorPlugin extends TorPlugin {
 
 	private final Context appContext;
 	private final RenewableWakeLock wakeLock;
+	private final File torFile, obfs4File;
 
 	AndroidTorPlugin(Executor ioExecutor, ScheduledExecutorService scheduler,
 			Context appContext, NetworkManager networkManager,
@@ -48,7 +50,8 @@ class AndroidTorPlugin extends TorPlugin {
 			int maxIdleTime) {
 		super(ioExecutor, networkManager, locationUtils, torSocketFactory,
 				clock, resourceProvider, circumventionProvider, batteryManager,
-				backoff, torRendezvousCrypto, callback, architecture, maxLatency, maxIdleTime,
+				backoff, torRendezvousCrypto, callback, architecture,
+				maxLatency, maxIdleTime,
 				appContext.getDir("tor", MODE_PRIVATE));
 		this.appContext = appContext;
 		PowerManager pm = (PowerManager)
@@ -56,6 +59,14 @@ class AndroidTorPlugin extends TorPlugin {
 		if (pm == null) throw new AssertionError();
 		wakeLock = new RenewableWakeLock(pm, scheduler, PARTIAL_WAKE_LOCK,
 				getWakeLockTag(), 1, MINUTES);
+		String nativeLibDir = appContext.getApplicationInfo().nativeLibraryDir;
+		if (SDK_INT < 16) {
+			torFile = new File(nativeLibDir, "libtor.so");
+			obfs4File = new File(nativeLibDir, "libobfs4proxy.so");
+		} else {
+			torFile = new File(nativeLibDir, "libtor_pie.so");
+			obfs4File = new File(nativeLibDir, "libobfs4proxy_pie.so");
+		}
 	}
 
 	@Override
@@ -103,28 +114,27 @@ class AndroidTorPlugin extends TorPlugin {
 
 	@Override
 	protected File getTorExecutableFile() {
-		if (SDK_INT >= 16) return new File(getNativeLibDir(), "libtor.so");
-		else return super.getTorExecutableFile();
+		return torFile;
 	}
 
 	@Override
 	protected File getObfs4ExecutableFile() {
-		if (SDK_INT >= 16)
-			return new File(getNativeLibDir(), "libobfs4proxy.so");
-		else return super.getObfs4ExecutableFile();
-	}
-
-	private File getNativeLibDir() {
-		return new File(appContext.getApplicationInfo().nativeLibraryDir);
+		return obfs4File;
 	}
 
 	@Override
 	protected void installTorExecutable() throws IOException {
-		if (SDK_INT < 16) super.installTorExecutable();
+		if (!torFile.exists()) {
+			// TODO: On API < 29, fall back to extracting lib from APK
+			throw new FileNotFoundException(torFile.getAbsolutePath());
+		}
 	}
 
 	@Override
 	protected void installObfs4Executable() throws IOException {
-		if (SDK_INT < 16) super.installObfs4Executable();
+		if (!obfs4File.exists()) {
+			// TODO: On API < 29, fall back to extracting lib from APK
+			throw new FileNotFoundException(obfs4File.getAbsolutePath());
+		}
 	}
 }
