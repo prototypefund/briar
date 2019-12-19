@@ -1,5 +1,6 @@
 package org.briarproject.bramble.db;
 
+import org.briarproject.bramble.api.Pair;
 import org.briarproject.bramble.api.contact.Contact;
 import org.briarproject.bramble.api.contact.ContactId;
 import org.briarproject.bramble.api.contact.PendingContact;
@@ -62,7 +63,6 @@ import org.briarproject.bramble.api.sync.event.MessageRequestedEvent;
 import org.briarproject.bramble.api.sync.event.MessageSharedEvent;
 import org.briarproject.bramble.api.sync.event.MessageStateChangedEvent;
 import org.briarproject.bramble.api.sync.event.MessageToAckEvent;
-import org.briarproject.bramble.api.sync.event.MessageToRequestEvent;
 import org.briarproject.bramble.api.sync.event.MessagesAckedEvent;
 import org.briarproject.bramble.api.sync.event.MessagesSentEvent;
 import org.briarproject.bramble.api.sync.event.SyncVersionsUpdatedEvent;
@@ -91,7 +91,6 @@ import static org.briarproject.bramble.api.sync.Group.Visibility.INVISIBLE;
 import static org.briarproject.bramble.api.sync.Group.Visibility.SHARED;
 import static org.briarproject.bramble.api.sync.validation.MessageState.DELIVERED;
 import static org.briarproject.bramble.api.sync.validation.MessageState.UNKNOWN;
-import static org.briarproject.bramble.db.DatabaseConstants.MAX_OFFERED_MESSAGES;
 import static org.briarproject.bramble.util.LogUtils.logDuration;
 import static org.briarproject.bramble.util.LogUtils.logException;
 import static org.briarproject.bramble.util.LogUtils.now;
@@ -389,7 +388,6 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 		db.deleteMessageMetadata(txn, m);
 	}
 
-	@Nullable
 	@Override
 	public Ack generateAck(Transaction transaction, ContactId c,
 			int maxMessages) throws DbException {
@@ -398,12 +396,10 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
 		Collection<MessageId> ids = db.getMessagesToAck(txn, c, maxMessages);
-		if (ids.isEmpty()) return null;
-		db.lowerAckFlag(txn, c, ids);
+		if (!ids.isEmpty()) db.lowerAckFlag(txn, c, ids);
 		return new Ack(ids);
 	}
 
-	@Nullable
 	@Override
 	public Collection<Message> generateBatch(Transaction transaction,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
@@ -418,13 +414,11 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 			messages.add(db.getMessage(txn, m));
 			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
 		}
-		if (ids.isEmpty()) return null;
-		db.lowerRequestedFlag(txn, c, ids);
+		if (!ids.isEmpty()) db.lowerRequestedFlag(txn, c, ids);
 		transaction.attach(new MessagesSentEvent(c, ids));
 		return messages;
 	}
 
-	@Nullable
 	@Override
 	public Offer generateOffer(Transaction transaction, ContactId c,
 			int maxMessages, int maxLatency) throws DbException {
@@ -434,28 +428,11 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 			throw new NoSuchContactException();
 		Collection<MessageId> ids =
 				db.getMessagesToOffer(txn, c, maxMessages, maxLatency);
-		if (ids.isEmpty()) return null;
 		for (MessageId m : ids)
 			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
 		return new Offer(ids);
 	}
 
-	@Nullable
-	@Override
-	public Request generateRequest(Transaction transaction, ContactId c,
-			int maxMessages) throws DbException {
-		if (transaction.isReadOnly()) throw new IllegalArgumentException();
-		T txn = unbox(transaction);
-		if (!db.containsContact(txn, c))
-			throw new NoSuchContactException();
-		Collection<MessageId> ids = db.getMessagesToRequest(txn, c,
-				maxMessages);
-		if (ids.isEmpty()) return null;
-		db.removeOfferedMessages(txn, c, ids);
-		return new Request(ids);
-	}
-
-	@Nullable
 	@Override
 	public Collection<Message> generateRequestedBatch(Transaction transaction,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
@@ -470,8 +447,7 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 			messages.add(db.getMessage(txn, m));
 			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
 		}
-		if (ids.isEmpty()) return null;
-		db.lowerRequestedFlag(txn, c, ids);
+		if (!ids.isEmpty()) db.lowerRequestedFlag(txn, c, ids);
 		transaction.attach(new MessagesSentEvent(c, ids));
 		return messages;
 	}
@@ -824,27 +800,23 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public void receiveOffer(Transaction transaction, ContactId c, Offer o)
-			throws DbException {
+	public Pair<Ack, Request> receiveOffer(Transaction transaction,
+			ContactId c, Offer o) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
-		boolean ack = false, request = false;
-		int count = db.countOfferedMessages(txn, c);
+		List<MessageId> ack = new ArrayList<>();
+		List<MessageId> request = new ArrayList<>();
 		for (MessageId m : o.getMessageIds()) {
 			if (db.containsVisibleMessage(txn, c, m)) {
 				db.raiseSeenFlag(txn, c, m);
-				db.raiseAckFlag(txn, c, m);
-				ack = true;
-			} else if (count < MAX_OFFERED_MESSAGES) {
-				db.addOfferedMessage(txn, c, m);
-				request = true;
-				count++;
+				ack.add(m);
+			} else {
+				request.add(m);
 			}
 		}
-		if (ack) transaction.attach(new MessageToAckEvent(c));
-		if (request) transaction.attach(new MessageToRequestEvent(c));
+		return new Pair<>(new Ack(ack), new Request(request));
 	}
 
 	@Override

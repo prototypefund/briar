@@ -134,11 +134,12 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 		public void run() {
 			if (interrupted) return;
 			try {
-				Ack a = db.transactionWithNullableResult(false, txn ->
+				Ack a = db.transactionWithResult(false, txn ->
 						db.generateAck(txn, contactId, MAX_MESSAGE_IDS));
+				boolean empty = a.getMessageIds().isEmpty();
 				if (LOG.isLoggable(INFO))
-					LOG.info("Generated ack: " + (a != null));
-				if (a == null) decrementOutstandingQueries();
+					LOG.info("Generated ack: " + !empty);
+				if (empty) decrementOutstandingQueries();
 				else writerTasks.add(new WriteAck(a));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
@@ -172,13 +173,13 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 		public void run() {
 			if (interrupted) return;
 			try {
-				Collection<Message> b =
-						db.transactionWithNullableResult(false, txn ->
-								db.generateBatch(txn, contactId,
-										MAX_MESSAGES_PER_BATCH, maxLatency));
+				Collection<Message> b = db.transactionWithResult(false, txn ->
+						db.generateBatch(txn, contactId,
+								MAX_MESSAGES_PER_BATCH, maxLatency));
+				boolean empty = b.isEmpty();
 				if (LOG.isLoggable(INFO))
-					LOG.info("Generated batch: " + (b != null));
-				if (b == null) decrementOutstandingQueries();
+					LOG.info("Generated batch: " + !empty);
+				if (empty) decrementOutstandingQueries();
 				else writerTasks.add(new WriteBatch(b));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);

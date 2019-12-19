@@ -18,11 +18,12 @@ import org.briarproject.bramble.api.sync.Request;
 import org.briarproject.bramble.api.sync.SyncRecordWriter;
 import org.briarproject.bramble.api.sync.SyncSession;
 import org.briarproject.bramble.api.sync.Versions;
+import org.briarproject.bramble.api.sync.event.AckToSendEvent;
 import org.briarproject.bramble.api.sync.event.GroupVisibilityUpdatedEvent;
 import org.briarproject.bramble.api.sync.event.MessageRequestedEvent;
 import org.briarproject.bramble.api.sync.event.MessageSharedEvent;
 import org.briarproject.bramble.api.sync.event.MessageToAckEvent;
-import org.briarproject.bramble.api.sync.event.MessageToRequestEvent;
+import org.briarproject.bramble.api.sync.event.RequestToSendEvent;
 import org.briarproject.bramble.api.system.Clock;
 import org.briarproject.bramble.api.transport.StreamWriter;
 
@@ -81,8 +82,6 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 	private final AtomicBoolean generateAckQueued = new AtomicBoolean(false);
 	private final AtomicBoolean generateBatchQueued = new AtomicBoolean(false);
 	private final AtomicBoolean generateOfferQueued = new AtomicBoolean(false);
-	private final AtomicBoolean generateRequestQueued =
-			new AtomicBoolean(false);
 	private final AtomicLong nextSendTime = new AtomicLong(Long.MAX_VALUE);
 
 	private volatile boolean interrupted = false;
@@ -114,7 +113,6 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			generateAck();
 			generateBatch();
 			generateOffer();
-			generateRequest();
 			long now = clock.currentTimeMillis();
 			long nextKeepalive = now + maxIdleTime;
 			boolean dataToFlush = true;
@@ -186,11 +184,6 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			dbExecutor.execute(new GenerateOffer());
 	}
 
-	private void generateRequest() {
-		if (generateRequestQueued.compareAndSet(false, true))
-			dbExecutor.execute(new GenerateRequest());
-	}
-
 	private void setNextSendTime(long time) {
 		long old = nextSendTime.getAndSet(time);
 		if (time < old) writerTasks.add(NEXT_SEND_TIME_DECREASED);
@@ -219,12 +212,17 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 		} else if (e instanceof MessageToAckEvent) {
 			if (((MessageToAckEvent) e).getContactId().equals(contactId))
 				generateAck();
-		} else if (e instanceof MessageToRequestEvent) {
-			if (((MessageToRequestEvent) e).getContactId().equals(contactId))
-				generateRequest();
 		} else if (e instanceof LifecycleEvent) {
 			LifecycleEvent l = (LifecycleEvent) e;
 			if (l.getLifecycleState() == STOPPING) interrupt();
+		} else if (e instanceof AckToSendEvent) {
+			AckToSendEvent a = (AckToSendEvent) e;
+			if (a.getContactId().equals(contactId) && a.consume())
+				writerTasks.add(new WriteAck(a.getAck()));
+		} else if (e instanceof RequestToSendEvent) {
+			RequestToSendEvent r = (RequestToSendEvent) e;
+			if (r.getContactId().equals(contactId) && r.consume())
+				writerTasks.add(new WriteRequest(r.getRequest()));
 		}
 	}
 
@@ -236,11 +234,12 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			if (interrupted) return;
 			if (!generateAckQueued.getAndSet(false)) throw new AssertionError();
 			try {
-				Ack a = db.transactionWithNullableResult(false, txn ->
+				Ack a = db.transactionWithResult(false, txn ->
 						db.generateAck(txn, contactId, MAX_MESSAGE_IDS));
+				boolean empty = a.getMessageIds().isEmpty();
 				if (LOG.isLoggable(INFO))
-					LOG.info("Generated ack: " + (a != null));
-				if (a != null) writerTasks.add(new WriteAck(a));
+					LOG.info("Generated ack: " + !empty);
+				if (!empty) writerTasks.add(new WriteAck(a));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();
@@ -275,17 +274,16 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			if (!generateBatchQueued.getAndSet(false))
 				throw new AssertionError();
 			try {
-				Collection<Message> b =
-						db.transactionWithNullableResult(false, txn -> {
-							Collection<Message> batch =
-									db.generateRequestedBatch(txn, contactId,
-											MAX_MESSAGES_PER_BATCH, maxLatency);
-							setNextSendTime(db.getNextSendTime(txn, contactId));
-							return batch;
-						});
+				Collection<Message> b = db.transactionWithResult(false, txn -> {
+					Collection<Message> batch = db.generateRequestedBatch(txn,
+							contactId, MAX_MESSAGES_PER_BATCH, maxLatency);
+					setNextSendTime(db.getNextSendTime(txn, contactId));
+					return batch;
+				});
+				boolean empty = b.isEmpty();
 				if (LOG.isLoggable(INFO))
-					LOG.info("Generated batch: " + (b != null));
-				if (b != null) writerTasks.add(new WriteBatch(b));
+					LOG.info("Generated batch: " + !empty);
+				if (!empty) writerTasks.add(new WriteBatch(b));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();
@@ -320,15 +318,16 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			if (!generateOfferQueued.getAndSet(false))
 				throw new AssertionError();
 			try {
-				Offer o = db.transactionWithNullableResult(false, txn -> {
+				Offer o = db.transactionWithResult(false, txn -> {
 					Offer offer = db.generateOffer(txn, contactId,
 							MAX_MESSAGE_IDS, maxLatency);
 					setNextSendTime(db.getNextSendTime(txn, contactId));
 					return offer;
 				});
+				boolean empty = o.getMessageIds().isEmpty();
 				if (LOG.isLoggable(INFO))
-					LOG.info("Generated offer: " + (o != null));
-				if (o != null) writerTasks.add(new WriteOffer(o));
+					LOG.info("Generated offer: " + !empty);
+				if (!empty) writerTasks.add(new WriteOffer(o));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();
@@ -354,27 +353,6 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 		}
 	}
 
-	private class GenerateRequest implements Runnable {
-
-		@DatabaseExecutor
-		@Override
-		public void run() {
-			if (interrupted) return;
-			if (!generateRequestQueued.getAndSet(false))
-				throw new AssertionError();
-			try {
-				Request r = db.transactionWithNullableResult(false, txn ->
-						db.generateRequest(txn, contactId, MAX_MESSAGE_IDS));
-				if (LOG.isLoggable(INFO))
-					LOG.info("Generated request: " + (r != null));
-				if (r != null) writerTasks.add(new WriteRequest(r));
-			} catch (DbException e) {
-				logException(LOG, WARNING, e);
-				interrupt();
-			}
-		}
-	}
-
 	private class WriteRequest implements ThrowingRunnable<IOException> {
 
 		private final Request request;
@@ -389,7 +367,6 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			if (interrupted) return;
 			recordWriter.writeRequest(request);
 			LOG.info("Sent request");
-			generateRequest();
 		}
 	}
 }

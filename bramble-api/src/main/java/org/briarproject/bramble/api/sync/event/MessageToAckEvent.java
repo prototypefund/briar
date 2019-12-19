@@ -7,8 +7,8 @@ import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
 import javax.annotation.concurrent.Immutable;
 
 /**
- * An event that is broadcast when a message is received from, or offered by, a
- * contact and needs to be acknowledged.
+ * An event that is broadcast when a message is received from a contact and
+ * needs to be acknowledged.
  */
 @Immutable
 @NotNullByDefault

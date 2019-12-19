@@ -1,6 +1,7 @@
 package org.briarproject.bramble.sync;
 
 import org.briarproject.bramble.api.FormatException;
+import org.briarproject.bramble.api.Pair;
 import org.briarproject.bramble.api.contact.ContactId;
 import org.briarproject.bramble.api.contact.event.ContactRemovedEvent;
 import org.briarproject.bramble.api.db.DatabaseComponent;
@@ -19,6 +20,8 @@ import org.briarproject.bramble.api.sync.Request;
 import org.briarproject.bramble.api.sync.SyncRecordReader;
 import org.briarproject.bramble.api.sync.SyncSession;
 import org.briarproject.bramble.api.sync.Versions;
+import org.briarproject.bramble.api.sync.event.AckToSendEvent;
+import org.briarproject.bramble.api.sync.event.RequestToSendEvent;
 
 import java.io.IOException;
 import java.util.List;
@@ -167,8 +170,17 @@ class IncomingSession implements SyncSession, EventListener {
 		@Override
 		public void run() {
 			try {
-				db.transaction(false, txn ->
+				Pair<Ack, Request> pair = db.transactionWithResult(false, txn ->
 						db.receiveOffer(txn, contactId, offer));
+				Ack a = pair.getFirst();
+				Request r = pair.getSecond();
+				// We only expect to receive offers over duplex connections.
+				// The outgoing session corresponding to this incoming session
+				// is expected to consume these events
+				if (!a.getMessageIds().isEmpty())
+					eventBus.broadcast(new AckToSendEvent(contactId, a));
+				if (!r.getMessageIds().isEmpty())
+					eventBus.broadcast(new RequestToSendEvent(contactId, r));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();

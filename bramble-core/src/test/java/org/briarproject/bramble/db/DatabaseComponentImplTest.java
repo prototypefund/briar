@@ -1,5 +1,6 @@
 package org.briarproject.bramble.db;
 
+import org.briarproject.bramble.api.Pair;
 import org.briarproject.bramble.api.contact.Contact;
 import org.briarproject.bramble.api.contact.ContactId;
 import org.briarproject.bramble.api.contact.PendingContactId;
@@ -45,7 +46,6 @@ import org.briarproject.bramble.api.sync.event.MessageRequestedEvent;
 import org.briarproject.bramble.api.sync.event.MessageSharedEvent;
 import org.briarproject.bramble.api.sync.event.MessageStateChangedEvent;
 import org.briarproject.bramble.api.sync.event.MessageToAckEvent;
-import org.briarproject.bramble.api.sync.event.MessageToRequestEvent;
 import org.briarproject.bramble.api.sync.event.MessagesAckedEvent;
 import org.briarproject.bramble.api.sync.event.MessagesSentEvent;
 import org.briarproject.bramble.api.transport.IncomingKeys;
@@ -75,7 +75,6 @@ import static org.briarproject.bramble.api.sync.Group.Visibility.VISIBLE;
 import static org.briarproject.bramble.api.sync.validation.MessageState.DELIVERED;
 import static org.briarproject.bramble.api.sync.validation.MessageState.UNKNOWN;
 import static org.briarproject.bramble.api.transport.TransportConstants.REORDERING_WINDOW_SIZE;
-import static org.briarproject.bramble.db.DatabaseConstants.MAX_OFFERED_MESSAGES;
 import static org.briarproject.bramble.test.TestUtils.getAgreementPrivateKey;
 import static org.briarproject.bramble.test.TestUtils.getAgreementPublicKey;
 import static org.briarproject.bramble.test.TestUtils.getAuthor;
@@ -294,11 +293,11 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			throws Exception {
 		context.checking(new Expectations() {{
 			// Check whether the contact is in the DB (which it's not)
-			exactly(18).of(database).startTransaction();
+			exactly(17).of(database).startTransaction();
 			will(returnValue(txn));
-			exactly(18).of(database).containsContact(txn, contactId);
+			exactly(17).of(database).containsContact(txn, contactId);
 			will(returnValue(false));
-			exactly(18).of(database).abortTransaction(txn);
+			exactly(17).of(database).abortTransaction(txn);
 		}});
 		DatabaseComponent db = createDatabaseComponent(database, eventBus,
 				eventExecutor, shutdownManager);
@@ -331,14 +330,6 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 		try {
 			db.transaction(false, transaction ->
 					db.generateOffer(transaction, contactId, 123, 456));
-			fail();
-		} catch (NoSuchContactException expected) {
-			// Expected
-		}
-
-		try {
-			db.transaction(false, transaction ->
-					db.generateRequest(transaction, contactId, 123));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -914,30 +905,6 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 	}
 
 	@Test
-	public void testGenerateRequest() throws Exception {
-		MessageId messageId1 = new MessageId(getRandomId());
-		Collection<MessageId> ids = asList(messageId, messageId1);
-		context.checking(new Expectations() {{
-			oneOf(database).startTransaction();
-			will(returnValue(txn));
-			oneOf(database).containsContact(txn, contactId);
-			will(returnValue(true));
-			oneOf(database).getMessagesToRequest(txn, contactId, 123);
-			will(returnValue(ids));
-			oneOf(database).removeOfferedMessages(txn, contactId, ids);
-			oneOf(database).commitTransaction(txn);
-		}});
-		DatabaseComponent db = createDatabaseComponent(database, eventBus,
-				eventExecutor, shutdownManager);
-
-		db.transaction(false, transaction -> {
-			Request r = db.generateRequest(transaction, contactId, 123);
-			assertNotNull(r);
-			assertEquals(ids, r.getMessageIds());
-		});
-	}
-
-	@Test
 	public void testGenerateRequestedBatch() throws Exception {
 		Collection<MessageId> ids = asList(messageId, messageId1);
 		Collection<Message> messages = asList(message, message1);
@@ -1078,42 +1045,33 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 	public void testReceiveOffer() throws Exception {
 		MessageId messageId1 = new MessageId(getRandomId());
 		MessageId messageId2 = new MessageId(getRandomId());
-		MessageId messageId3 = new MessageId(getRandomId());
 		context.checking(new Expectations() {{
 			oneOf(database).startTransaction();
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			// There's room for two more offered messages
-			oneOf(database).countOfferedMessages(txn, contactId);
-			will(returnValue(MAX_OFFERED_MESSAGES - 2));
 			// The first message isn't visible - request it
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId);
 			will(returnValue(false));
-			oneOf(database).addOfferedMessage(txn, contactId, messageId);
-			// The second message is visible - ack it
+			// The second message is visible - mark it as seen and ack it
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId1);
 			will(returnValue(true));
 			oneOf(database).raiseSeenFlag(txn, contactId, messageId1);
-			oneOf(database).raiseAckFlag(txn, contactId, messageId1);
 			// The third message isn't visible - request it
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId2);
 			will(returnValue(false));
-			oneOf(database).addOfferedMessage(txn, contactId, messageId2);
-			// The fourth message isn't visible, but there's no room to store it
-			oneOf(database).containsVisibleMessage(txn, contactId, messageId3);
-			will(returnValue(false));
 			oneOf(database).commitTransaction(txn);
-			oneOf(eventBus).broadcast(with(any(MessageToAckEvent.class)));
-			oneOf(eventBus).broadcast(with(any(MessageToRequestEvent.class)));
 		}});
 		DatabaseComponent db = createDatabaseComponent(database, eventBus,
 				eventExecutor, shutdownManager);
 
-		Offer o = new Offer(asList(messageId, messageId1,
-				messageId2, messageId3));
-		db.transaction(false, transaction ->
+		Offer o = new Offer(asList(messageId, messageId1, messageId2));
+		Pair<Ack, Request> pair = db.transactionWithResult(false, transaction ->
 				db.receiveOffer(transaction, contactId, o));
+		Ack a = pair.getFirst();
+		Request r = pair.getSecond();
+		assertEquals(singletonList(messageId1), a.getMessageIds());
+		assertEquals(asList(messageId, messageId2), r.getMessageIds());
 	}
 
 	@Test

@@ -18,6 +18,7 @@ import org.junit.Test;
 
 import java.util.concurrent.Executor;
 
+import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static org.briarproject.bramble.api.sync.SyncConstants.MAX_MESSAGE_IDS;
 import static org.briarproject.bramble.test.TestUtils.getContactId;
@@ -53,16 +54,16 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			// Send the protocol versions
 			oneOf(recordWriter).writeVersions(with(any(Versions.class)));
 			// No acks to send
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(noAckTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(noAckTxn));
 			oneOf(db).generateAck(noAckTxn, contactId, MAX_MESSAGE_IDS);
-			will(returnValue(null));
+			will(returnValue(new Ack(emptyList())));
 			// No messages to send
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(noMsgTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(noMsgTxn));
 			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
-			will(returnValue(null));
+			will(returnValue(emptyList()));
 			// Send the end of stream marker
 			oneOf(streamWriter).sendEndOfStream();
 			// Remove listener
@@ -89,29 +90,29 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			// Send the protocol versions
 			oneOf(recordWriter).writeVersions(with(any(Versions.class)));
 			// One ack to send
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(ackTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(ackTxn));
 			oneOf(db).generateAck(ackTxn, contactId, MAX_MESSAGE_IDS);
 			will(returnValue(ack));
 			oneOf(recordWriter).writeAck(ack);
 			// One message to send
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(msgTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(msgTxn));
 			oneOf(db).generateBatch(with(msgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
 			will(returnValue(singletonList(message)));
 			oneOf(recordWriter).writeMessage(message);
 			// No more acks
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(noAckTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(noAckTxn));
 			oneOf(db).generateAck(noAckTxn, contactId, MAX_MESSAGE_IDS);
-			will(returnValue(null));
+			will(returnValue(new Ack(emptyList())));
 			// No more messages
-			oneOf(db).transactionWithNullableResult(with(false),
-					withNullableDbCallable(noMsgTxn));
+			oneOf(db).transactionWithResult(with(false),
+					withDbCallable(noMsgTxn));
 			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
-			will(returnValue(null));
+			will(returnValue(emptyList()));
 			// Send the end of stream marker
 			oneOf(streamWriter).sendEndOfStream();
 			// Remove listener

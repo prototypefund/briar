@@ -1,5 +1,6 @@
 package org.briarproject.bramble.api.db;
 
+import org.briarproject.bramble.api.Pair;
 import org.briarproject.bramble.api.contact.Contact;
 import org.briarproject.bramble.api.contact.ContactId;
 import org.briarproject.bramble.api.contact.PendingContact;
@@ -151,46 +152,30 @@ public interface DatabaseComponent extends TransactionManager {
 	void deleteMessageMetadata(Transaction txn, MessageId m) throws DbException;
 
 	/**
-	 * Returns an acknowledgement for the given contact, or null if there are
-	 * no messages to acknowledge.
+	 * Returns a possibly empty ack for the given contact.
 	 */
-	@Nullable
 	Ack generateAck(Transaction txn, ContactId c, int maxMessages)
 			throws DbException;
 
 	/**
-	 * Returns a batch of messages for the given contact, for transmission over
-	 * a transport with the given maximum latency. Returns null if there are no
-	 * suitable messages.
+	 * Returns a possibly empty batch of messages for the given contact, for
+	 * transmission over a transport with the given maximum latency.
 	 */
-	@Nullable
 	Collection<Message> generateBatch(Transaction txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
-	 * Returns an offer for the given contact for transmission over a
-	 * transport with the given maximum latency, or null if there are no
-	 * messages to offer.
+	 * Returns a possibly empty offer for the given contact, for transmission
+	 * over a transport with the given maximum latency.
 	 */
-	@Nullable
 	Offer generateOffer(Transaction txn, ContactId c, int maxMessages,
 			int maxLatency) throws DbException;
 
 	/**
-	 * Returns a request for the given contact, or null if there are no
-	 * messages to request.
+	 * Returns a possibly empty batch of messages for the given contact, for
+	 * transmission over a transport with the given maximum latency. Only
+	 * messages that have been requested by the contact are returned.
 	 */
-	@Nullable
-	Request generateRequest(Transaction txn, ContactId c, int maxMessages)
-			throws DbException;
-
-	/**
-	 * Returns a batch of messages for the given contact, for transmission over
-	 * a transport with the given maximum latency. Only messages that have been
-	 * requested by the contact are returned. Returns null if there are no
-	 * suitable messages.
-	 */
-	@Nullable
 	Collection<Message> generateRequestedBatch(Transaction txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
@@ -480,9 +465,12 @@ public interface DatabaseComponent extends TransactionManager {
 			throws DbException;
 
 	/**
-	 * Processes an offer from the given contact.
+	 * Processes an offer from the given contact. Returns an ack (which may be
+	 * empty) for any messages that should be acked, and a request (which may
+	 * be empty) for any messages that should be requested.
 	 */
-	void receiveOffer(Transaction txn, ContactId c, Offer o) throws DbException;
+	Pair<Ack, Request> receiveOffer(Transaction txn, ContactId c, Offer o)
+			throws DbException;
 
 	/**
 	 * Processes a request from the given contact.
