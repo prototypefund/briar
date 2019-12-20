@@ -429,30 +429,36 @@ interface Database<T> {
 			throws DbException;
 
 	/**
-	 * Returns the IDs of some messages received from the given contact that
-	 * need to be acknowledged, up to the given number of messages.
+	 * Returns the IDs of some single-block messages that need to be
+	 * acknowledged to the given contact, up to the given number of messages.
+	 * <p/>
+	 * Sync protocol v0.
 	 * <p/>
 	 * Read-only.
 	 */
-	Collection<MessageId> getMessagesToAck(T txn, ContactId c, int maxMessages)
-			throws DbException;
+	Collection<MessageId> getMessagesToAckV0(T txn, ContactId c,
+			int maxMessages) throws DbException;
 
 	/**
-	 * Returns the IDs of some messages that are eligible to be offered to the
-	 * given contact, up to the given number of messages.
+	 * Returns the IDs of some single-block messages that are eligible to be
+	 * offered to the given contact, up to the given number of messages.
+	 * <p/>
+	 * Sync protocol v0.
 	 * <p/>
 	 * Read-only.
 	 */
-	Collection<MessageId> getMessagesToOffer(T txn, ContactId c,
+	Collection<MessageId> getMessagesToOfferV0(T txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
-	 * Returns the IDs of some messages that are eligible to be sent to the
-	 * given contact, up to the given number of messages.
+	 * Returns the IDs of some single-block messages that are eligible to be
+	 * sent to the given contact, up to the given number of messages.
+	 * <p/>
+	 * Sync protocol v0.
 	 * <p/>
 	 * Read-only.
 	 */
-	Collection<MessageId> getMessagesToSend(T txn, ContactId c,
+	Collection<MessageId> getMessagesToSendV0(T txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
@@ -504,13 +510,15 @@ interface Database<T> {
 	Collection<PendingContact> getPendingContacts(T txn) throws DbException;
 
 	/**
-	 * Returns the IDs of some messages that are eligible to be sent to the
-	 * given contact and have been requested by the contact, up to the given
-	 * number of messages.
+	 * Returns the IDs of some single-block messages that are eligible to be
+	 * sent to the given contact and have been requested by the contact, up to
+	 * the given number of messages.
+	 * <p/>
+	 * Sync protocol v0.
 	 * <p/>
 	 * Read-only.
 	 */
-	Collection<MessageId> getRequestedMessagesToSend(T txn, ContactId c,
+	Collection<MessageId> getRequestedMessagesToSendV0(T txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
@@ -542,18 +550,22 @@ interface Database<T> {
 			throws DbException;
 
 	/**
-	 * Marks the given messages as not needing to be acknowledged to the
-	 * given contact.
+	 * Marks the given single-block messages as not needing to be acknowledged
+	 * to the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void lowerAckFlag(T txn, ContactId c, Collection<MessageId> acked)
+	void lowerAckFlagV0(T txn, ContactId c, Collection<MessageId> acked)
 			throws DbException;
 
 	/**
-	 * Marks the given messages as not having been requested by the given
-	 * contact.
+	 * Marks the given single-block messages as not having been requested by
+	 * the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void lowerRequestedFlag(T txn, ContactId c, Collection<MessageId> requested)
-			throws DbException;
+	void lowerRequestedFlagV0(T txn, ContactId c,
+			Collection<MessageId> requested) throws DbException;
 
 	/**
 	 * Merges the given metadata with the existing metadata for the given
@@ -576,19 +588,28 @@ interface Database<T> {
 	void mergeSettings(T txn, Settings s, String namespace) throws DbException;
 
 	/**
-	 * Marks a message as needing to be acknowledged to the given contact.
+	 * Marks a single-block message as needing to be acknowledged to the given
+	 * contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void raiseAckFlag(T txn, ContactId c, MessageId m) throws DbException;
+	void raiseAckFlagV0(T txn, ContactId c, MessageId m) throws DbException;
 
 	/**
-	 * Marks a message as having been requested by the given contact.
+	 * Marks a single-block message as having been requested by the given
+	 * contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void raiseRequestedFlag(T txn, ContactId c, MessageId m) throws DbException;
+	void raiseRequestedFlagV0(T txn, ContactId c, MessageId m)
+			throws DbException;
 
 	/**
-	 * Marks a message as having been seen by the given contact.
+	 * Marks a single-block message as having been seen by the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void raiseSeenFlag(T txn, ContactId c, MessageId m) throws DbException;
+	void raiseSeenFlagV0(T txn, ContactId c, MessageId m) throws DbException;
 
 	/**
 	 * Removes a contact from the database.
@@ -640,10 +661,12 @@ interface Database<T> {
 			throws DbException;
 
 	/**
-	 * Resets the transmission count and expiry time of the given message with
-	 * respect to the given contact.
+	 * Resets the transmission count and expiry time of the given single-block
+	 * message with respect to the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void resetExpiryTime(T txn, ContactId c, MessageId m) throws DbException;
+	void resetExpiryTimeV0(T txn, ContactId c, MessageId m) throws DbException;
 
 	/**
 	 * Marks the given contact as verified.
@@ -706,11 +729,13 @@ interface Database<T> {
 
 	/**
 	 * Updates the transmission count, expiry time and estimated time of arrival
-	 * of the given message with respect to the given contact, using the latency
-	 * of the transport over which it was sent.
+	 * of the given single-block message with respect to the given contact,
+	 * using the latency of the transport over which it was sent.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void updateExpiryTimeAndEta(T txn, ContactId c, MessageId m, int maxLatency)
-			throws DbException;
+	void updateExpiryTimeAndEtaV0(T txn, ContactId c, MessageId m,
+			int maxLatency) throws DbException;
 
 	/**
 	 * Stores the given transport keys, deleting any keys they have replaced.

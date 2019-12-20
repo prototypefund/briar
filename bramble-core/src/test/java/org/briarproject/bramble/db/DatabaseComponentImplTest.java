@@ -313,7 +313,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		try {
 			db.transaction(false, transaction ->
-					db.generateAck(transaction, contactId, 123));
+					db.generateAckV0(transaction, contactId, 123));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -321,7 +321,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		try {
 			db.transaction(false, transaction ->
-					db.generateBatch(transaction, contactId, 123, 456));
+					db.generateBatchV0(transaction, contactId, 123, 456));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -329,7 +329,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		try {
 			db.transaction(false, transaction ->
-					db.generateOffer(transaction, contactId, 123, 456));
+					db.generateOfferV0(transaction, contactId, 123, 456));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -378,7 +378,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 		try {
 			Ack a = new Ack(singletonList(messageId));
 			db.transaction(false, transaction ->
-					db.receiveAck(transaction, contactId, a));
+					db.receiveAckV0(transaction, contactId, a));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -386,7 +386,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		try {
 			db.transaction(false, transaction ->
-					db.receiveMessage(transaction, contactId, message));
+					db.receiveMessageV0(transaction, contactId, message));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -395,7 +395,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 		try {
 			Offer o = new Offer(singletonList(messageId));
 			db.transaction(false, transaction ->
-					db.receiveOffer(transaction, contactId, o));
+					db.receiveOfferV0(transaction, contactId, o));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -404,7 +404,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 		try {
 			Request r = new Request(singletonList(messageId));
 			db.transaction(false, transaction ->
-					db.receiveRequest(transaction, contactId, r));
+					db.receiveRequestV0(transaction, contactId, r));
 			fail();
 		} catch (NoSuchContactException expected) {
 			// Expected
@@ -824,30 +824,30 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 	}
 
 	@Test
-	public void testGenerateAck() throws Exception {
+	public void testGenerateAckV0() throws Exception {
 		Collection<MessageId> messagesToAck = asList(messageId, messageId1);
 		context.checking(new Expectations() {{
 			oneOf(database).startTransaction();
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getMessagesToAck(txn, contactId, 123);
+			oneOf(database).getMessagesToAckV0(txn, contactId, 123);
 			will(returnValue(messagesToAck));
-			oneOf(database).lowerAckFlag(txn, contactId, messagesToAck);
+			oneOf(database).lowerAckFlagV0(txn, contactId, messagesToAck);
 			oneOf(database).commitTransaction(txn);
 		}});
 		DatabaseComponent db = createDatabaseComponent(database, eventBus,
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction -> {
-			Ack a = db.generateAck(transaction, contactId, 123);
+			Ack a = db.generateAckV0(transaction, contactId, 123);
 			assertNotNull(a);
 			assertEquals(messagesToAck, a.getMessageIds());
 		});
 	}
 
 	@Test
-	public void testGenerateBatch() throws Exception {
+	public void testGenerateBatchV0() throws Exception {
 		Collection<MessageId> ids = asList(messageId, messageId1);
 		Collection<Message> messages = asList(message, message1);
 		context.checking(new Expectations() {{
@@ -855,17 +855,17 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getMessagesToSend(txn, contactId, 2, maxLatency);
+			oneOf(database).getMessagesToSendV0(txn, contactId, 2, maxLatency);
 			will(returnValue(ids));
 			oneOf(database).getSmallMessage(txn, messageId);
 			will(returnValue(message));
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId,
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId,
 					maxLatency);
 			oneOf(database).getSmallMessage(txn, messageId1);
 			will(returnValue(message1));
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId1,
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId1,
 					maxLatency);
-			oneOf(database).lowerRequestedFlag(txn, contactId, ids);
+			oneOf(database).lowerRequestedFlagV0(txn, contactId, ids);
 			oneOf(database).commitTransaction(txn);
 			oneOf(eventBus).broadcast(with(any(MessagesSentEvent.class)));
 		}});
@@ -873,12 +873,12 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction ->
-				assertEquals(messages, db.generateBatch(transaction, contactId,
-						2, maxLatency)));
+				assertEquals(messages, db.generateBatchV0(transaction,
+						contactId, 2, maxLatency)));
 	}
 
 	@Test
-	public void testGenerateOffer() throws Exception {
+	public void testGenerateOfferV0() throws Exception {
 		MessageId messageId1 = new MessageId(getRandomId());
 		Collection<MessageId> ids = asList(messageId, messageId1);
 		context.checking(new Expectations() {{
@@ -886,11 +886,12 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getMessagesToOffer(txn, contactId, 123, maxLatency);
-			will(returnValue(ids));
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId,
+			oneOf(database).getMessagesToOfferV0(txn, contactId, 123,
 					maxLatency);
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId1,
+			will(returnValue(ids));
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId,
+					maxLatency);
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId1,
 					maxLatency);
 			oneOf(database).commitTransaction(txn);
 		}});
@@ -898,14 +899,15 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction -> {
-			Offer o = db.generateOffer(transaction, contactId, 123, maxLatency);
+			Offer o = db.generateOfferV0(transaction, contactId, 123,
+					maxLatency);
 			assertNotNull(o);
 			assertEquals(ids, o.getMessageIds());
 		});
 	}
 
 	@Test
-	public void testGenerateRequestedBatch() throws Exception {
+	public void testGenerateRequestedBatchV0() throws Exception {
 		Collection<MessageId> ids = asList(messageId, messageId1);
 		Collection<Message> messages = asList(message, message1);
 		context.checking(new Expectations() {{
@@ -913,18 +915,18 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(txn));
 			oneOf(database).containsContact(txn, contactId);
 			will(returnValue(true));
-			oneOf(database).getRequestedMessagesToSend(txn, contactId, 2,
+			oneOf(database).getRequestedMessagesToSendV0(txn, contactId, 2,
 					maxLatency);
 			will(returnValue(ids));
 			oneOf(database).getSmallMessage(txn, messageId);
 			will(returnValue(message));
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId,
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId,
 					maxLatency);
 			oneOf(database).getSmallMessage(txn, messageId1);
 			will(returnValue(message1));
-			oneOf(database).updateExpiryTimeAndEta(txn, contactId, messageId1,
+			oneOf(database).updateExpiryTimeAndEtaV0(txn, contactId, messageId1,
 					maxLatency);
-			oneOf(database).lowerRequestedFlag(txn, contactId, ids);
+			oneOf(database).lowerRequestedFlagV0(txn, contactId, ids);
 			oneOf(database).commitTransaction(txn);
 			oneOf(eventBus).broadcast(with(any(MessagesSentEvent.class)));
 		}});
@@ -932,7 +934,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction ->
-				assertEquals(messages, db.generateRequestedBatch(transaction,
+				assertEquals(messages, db.generateRequestedBatchV0(transaction,
 						contactId, 2, maxLatency)));
 	}
 
@@ -945,7 +947,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(true));
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId);
 			will(returnValue(true));
-			oneOf(database).raiseSeenFlag(txn, contactId, messageId);
+			oneOf(database).raiseSeenFlagV0(txn, contactId, messageId);
 			oneOf(database).commitTransaction(txn);
 			oneOf(eventBus).broadcast(with(any(MessagesAckedEvent.class)));
 		}});
@@ -954,7 +956,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		db.transaction(false, transaction -> {
 			Ack a = new Ack(singletonList(messageId));
-			db.receiveAck(transaction, contactId, a);
+			db.receiveAckV0(transaction, contactId, a);
 		});
 	}
 
@@ -979,8 +981,8 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(VISIBLE));
 			oneOf(database).containsMessage(txn, messageId);
 			will(returnValue(true));
-			oneOf(database).raiseSeenFlag(txn, contactId, messageId);
-			oneOf(database).raiseAckFlag(txn, contactId, messageId);
+			oneOf(database).raiseSeenFlagV0(txn, contactId, messageId);
+			oneOf(database).raiseAckFlagV0(txn, contactId, messageId);
 			oneOf(database).commitTransaction(txn);
 			// First time: the message was received and added
 			oneOf(eventBus).broadcast(with(any(MessageToAckEvent.class)));
@@ -993,8 +995,8 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		db.transaction(false, transaction -> {
 			// Receive the message twice
-			db.receiveMessage(transaction, contactId, message);
-			db.receiveMessage(transaction, contactId, message);
+			db.receiveMessageV0(transaction, contactId, message);
+			db.receiveMessageV0(transaction, contactId, message);
 		});
 	}
 
@@ -1010,8 +1012,8 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			oneOf(database).getGroupVisibility(txn, contactId, groupId);
 			will(returnValue(VISIBLE));
 			// The message wasn't stored but it must still be acked
-			oneOf(database).raiseSeenFlag(txn, contactId, messageId);
-			oneOf(database).raiseAckFlag(txn, contactId, messageId);
+			oneOf(database).raiseSeenFlagV0(txn, contactId, messageId);
+			oneOf(database).raiseAckFlagV0(txn, contactId, messageId);
 			oneOf(database).commitTransaction(txn);
 			// The message was received but not added
 			oneOf(eventBus).broadcast(with(any(MessageToAckEvent.class)));
@@ -1020,7 +1022,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction ->
-				db.receiveMessage(transaction, contactId, message));
+				db.receiveMessageV0(transaction, contactId, message));
 	}
 
 	@Test
@@ -1038,7 +1040,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 				eventExecutor, shutdownManager);
 
 		db.transaction(false, transaction ->
-				db.receiveMessage(transaction, contactId, message));
+				db.receiveMessageV0(transaction, contactId, message));
 	}
 
 	@Test
@@ -1056,7 +1058,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			// The second message is visible - mark it as seen and ack it
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId1);
 			will(returnValue(true));
-			oneOf(database).raiseSeenFlag(txn, contactId, messageId1);
+			oneOf(database).raiseSeenFlagV0(txn, contactId, messageId1);
 			// The third message isn't visible - request it
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId2);
 			will(returnValue(false));
@@ -1067,7 +1069,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		Offer o = new Offer(asList(messageId, messageId1, messageId2));
 		Pair<Ack, Request> pair = db.transactionWithResult(false, transaction ->
-				db.receiveOffer(transaction, contactId, o));
+				db.receiveOfferV0(transaction, contactId, o));
 		Ack a = pair.getFirst();
 		Request r = pair.getSecond();
 		assertEquals(singletonList(messageId1), a.getMessageIds());
@@ -1083,8 +1085,8 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 			will(returnValue(true));
 			oneOf(database).containsVisibleMessage(txn, contactId, messageId);
 			will(returnValue(true));
-			oneOf(database).raiseRequestedFlag(txn, contactId, messageId);
-			oneOf(database).resetExpiryTime(txn, contactId, messageId);
+			oneOf(database).raiseRequestedFlagV0(txn, contactId, messageId);
+			oneOf(database).resetExpiryTimeV0(txn, contactId, messageId);
 			oneOf(database).commitTransaction(txn);
 			oneOf(eventBus).broadcast(with(any(MessageRequestedEvent.class)));
 		}});
@@ -1093,7 +1095,7 @@ public class DatabaseComponentImplTest extends BrambleMockTestCase {
 
 		Request r = new Request(singletonList(messageId));
 		db.transaction(false, transaction ->
-				db.receiveRequest(transaction, contactId, r));
+				db.receiveRequestV0(transaction, contactId, r));
 	}
 
 	@Test

@@ -153,30 +153,40 @@ public interface DatabaseComponent extends TransactionManager {
 
 	/**
 	 * Returns a possibly empty ack for the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	Ack generateAck(Transaction txn, ContactId c, int maxMessages)
+	Ack generateAckV0(Transaction txn, ContactId c, int maxMessages)
 			throws DbException;
 
 	/**
-	 * Returns a possibly empty batch of messages for the given contact, for
-	 * transmission over a transport with the given maximum latency.
+	 * Returns a possibly empty batch of single-block messages for the given
+	 * contact, for transmission over a transport with the given maximum
+	 * latency.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	Collection<Message> generateBatch(Transaction txn, ContactId c,
+	Collection<Message> generateBatchV0(Transaction txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
 	 * Returns a possibly empty offer for the given contact, for transmission
 	 * over a transport with the given maximum latency.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	Offer generateOffer(Transaction txn, ContactId c, int maxMessages,
+	Offer generateOfferV0(Transaction txn, ContactId c, int maxMessages,
 			int maxLatency) throws DbException;
 
 	/**
-	 * Returns a possibly empty batch of messages for the given contact, for
-	 * transmission over a transport with the given maximum latency. Only
-	 * messages that have been requested by the contact are returned.
+	 * Returns a possibly empty batch of single-block messages for the given
+	 * contact, for transmission over a transport with the given maximum
+	 * latency. Only messages that have been requested by the contact are
+	 * returned.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	Collection<Message> generateRequestedBatch(Transaction txn, ContactId c,
+	Collection<Message> generateRequestedBatchV0(Transaction txn, ContactId c,
 			int maxMessages, int maxLatency) throws DbException;
 
 	/**
@@ -456,27 +466,35 @@ public interface DatabaseComponent extends TransactionManager {
 
 	/**
 	 * Processes an ack from the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void receiveAck(Transaction txn, ContactId c, Ack a) throws DbException;
+	void receiveAckV0(Transaction txn, ContactId c, Ack a) throws DbException;
 
 	/**
-	 * Processes a message from the given contact.
+	 * Processes a single-block message from the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void receiveMessage(Transaction txn, ContactId c, Message m)
+	void receiveMessageV0(Transaction txn, ContactId c, Message m)
 			throws DbException;
 
 	/**
 	 * Processes an offer from the given contact. Returns an ack (which may be
 	 * empty) for any messages that should be acked, and a request (which may
 	 * be empty) for any messages that should be requested.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	Pair<Ack, Request> receiveOffer(Transaction txn, ContactId c, Offer o)
+	Pair<Ack, Request> receiveOfferV0(Transaction txn, ContactId c, Offer o)
 			throws DbException;
 
 	/**
 	 * Processes a request from the given contact.
+	 * <p/>
+	 * Sync protocol v0.
 	 */
-	void receiveRequest(Transaction txn, ContactId c, Request r)
+	void receiveRequestV0(Transaction txn, ContactId c, Request r)
 			throws DbException;
 
 	/**

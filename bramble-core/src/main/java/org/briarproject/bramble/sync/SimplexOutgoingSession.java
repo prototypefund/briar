@@ -135,7 +135,7 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 			if (interrupted) return;
 			try {
 				Ack a = db.transactionWithResult(false, txn ->
-						db.generateAck(txn, contactId, MAX_MESSAGE_IDS));
+						db.generateAckV0(txn, contactId, MAX_MESSAGE_IDS));
 				boolean empty = a.getMessageIds().isEmpty();
 				if (LOG.isLoggable(INFO))
 					LOG.info("Generated ack: " + !empty);
@@ -174,7 +174,7 @@ class SimplexOutgoingSession implements SyncSession, EventListener {
 			if (interrupted) return;
 			try {
 				Collection<Message> b = db.transactionWithResult(false, txn ->
-						db.generateBatch(txn, contactId,
+						db.generateBatchV0(txn, contactId,
 								MAX_MESSAGES_PER_BATCH, maxLatency));
 				boolean empty = b.isEmpty();
 				if (LOG.isLoggable(INFO))

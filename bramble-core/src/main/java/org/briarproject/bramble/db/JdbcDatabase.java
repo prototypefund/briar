@@ -1248,7 +1248,6 @@ abstract class JdbcDatabase implements Database<Connection> {
 		try {
 			String sql = "SELECT NULL FROM blockStatuses"
 					+ " WHERE messageId = ? AND contactId = ?"
-					+ " AND blockCount = 1"
 					+ " AND messageShared = TRUE"; // TODO: Why this condition?
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
@@ -1904,7 +1903,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 					+ " blocksSeen = blockCount"
 					+ " FROM blockStatuses"
 					+ " WHERE contactId = ? AND groupId = ?"
-					+ " AND blockCount = 1";
+					+ " AND blockNumber = 0";
 			ps = txn.prepareStatement(sql);
 			ps.setInt(1, c.getInt());
 			ps.setBytes(2, g.getBytes());
@@ -1939,7 +1938,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 			String sql = "SELECT txCount > 0, blocksSeen = blockCount"
 					+ " FROM blockStatuses"
 					+ " WHERE messageId = ? AND contactId = ?"
-					+ " AND blockCount = 1";
+					+ " AND blockNumber = 0";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
 			ps.setInt(2, c.getInt());
@@ -2046,7 +2045,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public Collection<MessageId> getMessagesToAck(Connection txn, ContactId c,
+	public Collection<MessageId> getMessagesToAckV0(Connection txn, ContactId c,
 			int maxMessages) throws DbException {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
@@ -2072,7 +2071,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public Collection<MessageId> getMessagesToOffer(Connection txn,
+	public Collection<MessageId> getMessagesToOfferV0(Connection txn,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		long now = clock.currentTimeMillis();
 		long eta = now + maxLatency;
@@ -2105,8 +2104,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public Collection<MessageId> getMessagesToSend(Connection txn, ContactId c,
-			int maxMessages, int maxLatency) throws DbException {
+	public Collection<MessageId> getMessagesToSendV0(Connection txn,
+			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		long now = clock.currentTimeMillis();
 		long eta = now + maxLatency;
 		PreparedStatement ps = null;
@@ -2206,7 +2205,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 		ResultSet rs = null;
 		try {
 			String sql = "SELECT expiry FROM blockStatuses"
-					+ " WHERE contactId = ? AND blockCount = 1"
+					+ " WHERE contactId = ?"
 					+ " AND groupShared = TRUE AND messageShared = TRUE"
 					+ " AND deleted = FALSE AND seen = FALSE"
 					+ " ORDER BY expiry LIMIT 1";
@@ -2282,7 +2281,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public Collection<MessageId> getRequestedMessagesToSend(Connection txn,
+	public Collection<MessageId> getRequestedMessagesToSendV0(Connection txn,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		long now = clock.currentTimeMillis();
 		long eta = now + maxLatency;
@@ -2461,7 +2460,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void lowerAckFlag(Connection txn, ContactId c,
+	public void lowerAckFlagV0(Connection txn, ContactId c,
 			Collection<MessageId> acked) throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -2489,7 +2488,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void lowerRequestedFlag(Connection txn, ContactId c,
+	public void lowerRequestedFlagV0(Connection txn, ContactId c,
 			Collection<MessageId> requested) throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -2706,7 +2705,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void raiseAckFlag(Connection txn, ContactId c, MessageId m)
+	public void raiseAckFlagV0(Connection txn, ContactId c, MessageId m)
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -2726,7 +2725,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void raiseRequestedFlag(Connection txn, ContactId c, MessageId m)
+	public void raiseRequestedFlagV0(Connection txn, ContactId c, MessageId m)
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -2746,7 +2745,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void raiseSeenFlag(Connection txn, ContactId c, MessageId m)
+	public void raiseSeenFlagV0(Connection txn, ContactId c, MessageId m)
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -2931,7 +2930,7 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void resetExpiryTime(Connection txn, ContactId c, MessageId m)
+	public void resetExpiryTimeV0(Connection txn, ContactId c, MessageId m)
 			throws DbException {
 		PreparedStatement ps = null;
 		try {
@@ -3194,8 +3193,8 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public void updateExpiryTimeAndEta(Connection txn, ContactId c, MessageId m,
-			int maxLatency) throws DbException {
+	public void updateExpiryTimeAndEtaV0(Connection txn, ContactId c,
+			MessageId m, int maxLatency) throws DbException {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {

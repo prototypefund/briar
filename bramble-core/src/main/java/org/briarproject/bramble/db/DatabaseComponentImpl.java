@@ -389,65 +389,65 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public Ack generateAck(Transaction transaction, ContactId c,
+	public Ack generateAckV0(Transaction transaction, ContactId c,
 			int maxMessages) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
-		Collection<MessageId> ids = db.getMessagesToAck(txn, c, maxMessages);
-		if (!ids.isEmpty()) db.lowerAckFlag(txn, c, ids);
+		Collection<MessageId> ids = db.getMessagesToAckV0(txn, c, maxMessages);
+		if (!ids.isEmpty()) db.lowerAckFlagV0(txn, c, ids);
 		return new Ack(ids);
 	}
 
 	@Override
-	public Collection<Message> generateBatch(Transaction transaction,
+	public Collection<Message> generateBatchV0(Transaction transaction,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
 		Collection<MessageId> ids =
-				db.getMessagesToSend(txn, c, maxMessages, maxLatency);
+				db.getMessagesToSendV0(txn, c, maxMessages, maxLatency);
 		List<Message> messages = new ArrayList<>(ids.size());
 		for (MessageId m : ids) {
 			messages.add(db.getSmallMessage(txn, m));
-			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
+			db.updateExpiryTimeAndEtaV0(txn, c, m, maxLatency);
 		}
-		if (!ids.isEmpty()) db.lowerRequestedFlag(txn, c, ids);
+		if (!ids.isEmpty()) db.lowerRequestedFlagV0(txn, c, ids);
 		transaction.attach(new MessagesSentEvent(c, ids));
 		return messages;
 	}
 
 	@Override
-	public Offer generateOffer(Transaction transaction, ContactId c,
+	public Offer generateOfferV0(Transaction transaction, ContactId c,
 			int maxMessages, int maxLatency) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
 		Collection<MessageId> ids =
-				db.getMessagesToOffer(txn, c, maxMessages, maxLatency);
+				db.getMessagesToOfferV0(txn, c, maxMessages, maxLatency);
 		for (MessageId m : ids)
-			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
+			db.updateExpiryTimeAndEtaV0(txn, c, m, maxLatency);
 		return new Offer(ids);
 	}
 
 	@Override
-	public Collection<Message> generateRequestedBatch(Transaction transaction,
+	public Collection<Message> generateRequestedBatchV0(Transaction transaction,
 			ContactId c, int maxMessages, int maxLatency) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
-		Collection<MessageId> ids = db.getRequestedMessagesToSend(txn, c,
+		Collection<MessageId> ids = db.getRequestedMessagesToSendV0(txn, c,
 				maxMessages, maxLatency);
 		List<Message> messages = new ArrayList<>(ids.size());
 		for (MessageId m : ids) {
 			messages.add(db.getSmallMessage(txn, m));
-			db.updateExpiryTimeAndEta(txn, c, m, maxLatency);
+			db.updateExpiryTimeAndEtaV0(txn, c, m, maxLatency);
 		}
-		if (!ids.isEmpty()) db.lowerRequestedFlag(txn, c, ids);
+		if (!ids.isEmpty()) db.lowerRequestedFlagV0(txn, c, ids);
 		transaction.attach(new MessagesSentEvent(c, ids));
 		return messages;
 	}
@@ -762,7 +762,7 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public void receiveAck(Transaction transaction, ContactId c, Ack a)
+	public void receiveAckV0(Transaction transaction, ContactId c, Ack a)
 			throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
@@ -771,7 +771,7 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 		Collection<MessageId> acked = new ArrayList<>();
 		for (MessageId m : a.getMessageIds()) {
 			if (db.containsVisibleMessage(txn, c, m)) {
-				db.raiseSeenFlag(txn, c, m);
+				db.raiseSeenFlagV0(txn, c, m);
 				acked.add(m);
 			}
 		}
@@ -781,16 +781,16 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public void receiveMessage(Transaction transaction, ContactId c, Message m)
-			throws DbException {
+	public void receiveMessageV0(Transaction transaction, ContactId c,
+			Message m) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
 			throw new NoSuchContactException();
 		if (db.getGroupVisibility(txn, c, m.getGroupId()) != INVISIBLE) {
 			if (db.containsMessage(txn, m.getId())) {
-				db.raiseSeenFlag(txn, c, m.getId());
-				db.raiseAckFlag(txn, c, m.getId());
+				db.raiseSeenFlagV0(txn, c, m.getId());
+				db.raiseAckFlagV0(txn, c, m.getId());
 			} else {
 				db.addMessage(txn, m, UNKNOWN, false, false, c);
 				transaction.attach(new MessageAddedEvent(m, c));
@@ -800,7 +800,7 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public Pair<Ack, Request> receiveOffer(Transaction transaction,
+	public Pair<Ack, Request> receiveOfferV0(Transaction transaction,
 			ContactId c, Offer o) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
@@ -810,7 +810,7 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 		List<MessageId> request = new ArrayList<>();
 		for (MessageId m : o.getMessageIds()) {
 			if (db.containsVisibleMessage(txn, c, m)) {
-				db.raiseSeenFlag(txn, c, m);
+				db.raiseSeenFlagV0(txn, c, m);
 				ack.add(m);
 			} else {
 				request.add(m);
@@ -820,8 +820,8 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 	}
 
 	@Override
-	public void receiveRequest(Transaction transaction, ContactId c, Request r)
-			throws DbException {
+	public void receiveRequestV0(Transaction transaction, ContactId c,
+			Request r) throws DbException {
 		if (transaction.isReadOnly()) throw new IllegalArgumentException();
 		T txn = unbox(transaction);
 		if (!db.containsContact(txn, c))
@@ -829,8 +829,8 @@ class DatabaseComponentImpl<T> implements DatabaseComponent {
 		boolean requested = false;
 		for (MessageId m : r.getMessageIds()) {
 			if (db.containsVisibleMessage(txn, c, m)) {
-				db.raiseRequestedFlag(txn, c, m);
-				db.resetExpiryTime(txn, c, m);
+				db.raiseRequestedFlagV0(txn, c, m);
+				db.resetExpiryTimeV0(txn, c, m);
 				requested = true;
 			}
 		}

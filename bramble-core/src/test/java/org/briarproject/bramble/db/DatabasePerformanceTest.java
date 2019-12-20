@@ -421,33 +421,33 @@ public abstract class DatabasePerformanceTest extends BrambleTestCase {
 	}
 
 	@Test
-	public void testGetMessagesToAck() throws Exception {
-		String name = "getMessagesToAck(T, ContactId, int)";
+	public void testGetMessagesToAckV0() throws Exception {
+		String name = "getMessagesToAckV0(T, ContactId, int)";
 		benchmark(name, db -> {
 			Connection txn = db.startTransaction();
-			db.getMessagesToAck(txn, pickRandom(contacts).getId(),
+			db.getMessagesToAckV0(txn, pickRandom(contacts).getId(),
 					MAX_MESSAGE_IDS);
 			db.commitTransaction(txn);
 		});
 	}
 
 	@Test
-	public void testGetMessagesToOffer() throws Exception {
-		String name = "getMessagesToOffer(T, ContactId, int)";
+	public void testGetMessagesToOfferV0() throws Exception {
+		String name = "getMessagesToOfferV0(T, ContactId, int)";
 		benchmark(name, db -> {
 			Connection txn = db.startTransaction();
-			db.getMessagesToOffer(txn, pickRandom(contacts).getId(),
+			db.getMessagesToOfferV0(txn, pickRandom(contacts).getId(),
 					MAX_MESSAGE_IDS, MAX_LATENCY);
 			db.commitTransaction(txn);
 		});
 	}
 
 	@Test
-	public void testGetMessagesToSend() throws Exception {
-		String name = "getMessagesToSend(T, ContactId, int)";
+	public void testGetMessagesToSendV0() throws Exception {
+		String name = "getMessagesToSendV0(T, ContactId, int)";
 		benchmark(name, db -> {
 			Connection txn = db.startTransaction();
-			db.getMessagesToSend(txn, pickRandom(contacts).getId(),
+			db.getMessagesToSendV0(txn, pickRandom(contacts).getId(),
 					MAX_MESSAGE_IDS, MAX_LATENCY);
 			db.commitTransaction(txn);
 		});
@@ -494,11 +494,11 @@ public abstract class DatabasePerformanceTest extends BrambleTestCase {
 	}
 
 	@Test
-	public void testGetRequestedMessagesToSend() throws Exception {
-		String name = "getRequestedMessagesToSend(T, ContactId, int)";
+	public void testGetRequestedMessagesToSendV0() throws Exception {
+		String name = "getRequestedMessagesToSendV0(T, ContactId, int)";
 		benchmark(name, db -> {
 			Connection txn = db.startTransaction();
-			db.getRequestedMessagesToSend(txn, pickRandom(contacts).getId(),
+			db.getRequestedMessagesToSendV0(txn, pickRandom(contacts).getId(),
 					MAX_MESSAGE_IDS, MAX_LATENCY);
 			db.commitTransaction(txn);
 		});
@@ -548,7 +548,7 @@ public abstract class DatabasePerformanceTest extends BrambleTestCase {
 					ContactId sender = random.nextBoolean() ? c : null;
 					db.addMessage(txn, m, state, shared, temporary, sender);
 					if (random.nextBoolean())
-						db.raiseRequestedFlag(txn, c, m.getId());
+						db.raiseRequestedFlagV0(txn, c, m.getId());
 					Metadata mm = getMetadata(METADATA_KEYS_PER_MESSAGE);
 					messageMeta.get(g.getId()).add(mm);
 					db.mergeMessageMetadata(txn, m.getId(), mm);

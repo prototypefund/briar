@@ -129,7 +129,7 @@ class IncomingSession implements SyncSession, EventListener {
 		public void run() {
 			try {
 				db.transaction(false, txn ->
-						db.receiveAck(txn, contactId, ack));
+						db.receiveAckV0(txn, contactId, ack));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();
@@ -150,7 +150,7 @@ class IncomingSession implements SyncSession, EventListener {
 		public void run() {
 			try {
 				db.transaction(false, txn ->
-						db.receiveMessage(txn, contactId, message));
+						db.receiveMessageV0(txn, contactId, message));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();
@@ -171,7 +171,7 @@ class IncomingSession implements SyncSession, EventListener {
 		public void run() {
 			try {
 				Pair<Ack, Request> pair = db.transactionWithResult(false, txn ->
-						db.receiveOffer(txn, contactId, offer));
+						db.receiveOfferV0(txn, contactId, offer));
 				Ack a = pair.getFirst();
 				Request r = pair.getSecond();
 				// We only expect to receive offers over duplex connections.
@@ -201,7 +201,7 @@ class IncomingSession implements SyncSession, EventListener {
 		public void run() {
 			try {
 				db.transaction(false, txn ->
-						db.receiveRequest(txn, contactId, request));
+						db.receiveRequestV0(txn, contactId, request));
 			} catch (DbException e) {
 				logException(LOG, WARNING, e);
 				interrupt();

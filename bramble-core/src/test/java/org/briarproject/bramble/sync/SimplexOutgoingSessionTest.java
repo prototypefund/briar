@@ -56,12 +56,12 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			// No acks to send
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(noAckTxn));
-			oneOf(db).generateAck(noAckTxn, contactId, MAX_MESSAGE_IDS);
+			oneOf(db).generateAckV0(noAckTxn, contactId, MAX_MESSAGE_IDS);
 			will(returnValue(new Ack(emptyList())));
 			// No messages to send
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(noMsgTxn));
-			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
+			oneOf(db).generateBatchV0(with(noMsgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
 			will(returnValue(emptyList()));
 			// Send the end of stream marker
@@ -92,25 +92,25 @@ public class SimplexOutgoingSessionTest extends BrambleMockTestCase {
 			// One ack to send
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(ackTxn));
-			oneOf(db).generateAck(ackTxn, contactId, MAX_MESSAGE_IDS);
+			oneOf(db).generateAckV0(ackTxn, contactId, MAX_MESSAGE_IDS);
 			will(returnValue(ack));
 			oneOf(recordWriter).writeAck(ack);
 			// One message to send
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(msgTxn));
-			oneOf(db).generateBatch(with(msgTxn), with(contactId),
+			oneOf(db).generateBatchV0(with(msgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
 			will(returnValue(singletonList(message)));
 			oneOf(recordWriter).writeMessage(message);
 			// No more acks
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(noAckTxn));
-			oneOf(db).generateAck(noAckTxn, contactId, MAX_MESSAGE_IDS);
+			oneOf(db).generateAckV0(noAckTxn, contactId, MAX_MESSAGE_IDS);
 			will(returnValue(new Ack(emptyList())));
 			// No more messages
 			oneOf(db).transactionWithResult(with(false),
 					withDbCallable(noMsgTxn));
-			oneOf(db).generateBatch(with(noMsgTxn), with(contactId),
+			oneOf(db).generateBatchV0(with(noMsgTxn), with(contactId),
 					with(any(int.class)), with(MAX_LATENCY));
 			will(returnValue(emptyList()));
 			// Send the end of stream marker

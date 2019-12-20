@@ -235,7 +235,7 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 			if (!generateAckQueued.getAndSet(false)) throw new AssertionError();
 			try {
 				Ack a = db.transactionWithResult(false, txn ->
-						db.generateAck(txn, contactId, MAX_MESSAGE_IDS));
+						db.generateAckV0(txn, contactId, MAX_MESSAGE_IDS));
 				boolean empty = a.getMessageIds().isEmpty();
 				if (LOG.isLoggable(INFO))
 					LOG.info("Generated ack: " + !empty);
@@ -275,7 +275,7 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 				throw new AssertionError();
 			try {
 				Collection<Message> b = db.transactionWithResult(false, txn -> {
-					Collection<Message> batch = db.generateRequestedBatch(txn,
+					Collection<Message> batch = db.generateRequestedBatchV0(txn,
 							contactId, MAX_MESSAGES_PER_BATCH, maxLatency);
 					setNextSendTime(db.getNextSendTime(txn, contactId));
 					return batch;
@@ -319,7 +319,7 @@ class DuplexOutgoingSession implements SyncSession, EventListener {
 				throw new AssertionError();
 			try {
 				Offer o = db.transactionWithResult(false, txn -> {
-					Offer offer = db.generateOffer(txn, contactId,
+					Offer offer = db.generateOfferV0(txn, contactId,
 							MAX_MESSAGE_IDS, maxLatency);
 					setNextSendTime(db.getNextSendTime(txn, contactId));
 					return offer;
