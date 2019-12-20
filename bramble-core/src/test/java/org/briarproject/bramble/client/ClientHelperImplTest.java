@@ -122,7 +122,7 @@ public class ClientHelperImplTest extends BrambleTestCase {
 		expectToList(true);
 		context.checking(new DbExpectations() {{
 			oneOf(db).transactionWithResult(with(true), withDbCallable(txn));
-			oneOf(db).getMessage(txn, messageId);
+			oneOf(db).getSmallMessage(txn, messageId);
 			will(returnValue(message));
 		}});
 

@@ -122,7 +122,7 @@ class ClientHelperImpl implements ClientHelper {
 
 	@Override
 	public Message getMessage(Transaction txn, MessageId m) throws DbException {
-		return db.getMessage(txn, m);
+		return db.getSmallMessage(txn, m);
 	}
 
 	@Override
@@ -134,7 +134,7 @@ class ClientHelperImpl implements ClientHelper {
 	@Override
 	public BdfList getMessageAsList(Transaction txn, MessageId m)
 			throws DbException, FormatException {
-		return toList(db.getMessage(txn, m).getBody());
+		return toList(db.getSmallMessage(txn, m).getBody());
 	}
 
 	@Override

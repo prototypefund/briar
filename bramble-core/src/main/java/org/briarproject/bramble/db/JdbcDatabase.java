@@ -16,6 +16,7 @@ import org.briarproject.bramble.api.db.DataTooOldException;
 import org.briarproject.bramble.api.db.DbClosedException;
 import org.briarproject.bramble.api.db.DbException;
 import org.briarproject.bramble.api.db.MessageDeletedException;
+import org.briarproject.bramble.api.db.MessageTooLargeException;
 import org.briarproject.bramble.api.db.Metadata;
 import org.briarproject.bramble.api.db.MigrationListener;
 import org.briarproject.bramble.api.identity.Author;
@@ -1673,11 +1674,13 @@ abstract class JdbcDatabase implements Database<Connection> {
 	}
 
 	@Override
-	public Message getMessage(Connection txn, MessageId m) throws DbException {
+	public Message getSmallMessage(Connection txn, MessageId m)
+			throws DbException {
 		PreparedStatement ps = null;
 		ResultSet rs = null;
 		try {
-			String sql = "SELECT groupId, timestamp, deleted FROM messages"
+			String sql = "SELECT groupId, timestamp, deleted, blockCount"
+					+ " FROM messages"
 					+ " WHERE messageId = ?";
 			ps = txn.prepareStatement(sql);
 			ps.setBytes(1, m.getBytes());
@@ -1686,10 +1689,12 @@ abstract class JdbcDatabase implements Database<Connection> {
 			GroupId g = new GroupId(rs.getBytes(1));
 			long timestamp = rs.getLong(2);
 			boolean deleted = rs.getBoolean(3);
+			int blockCount = rs.getInt(4);
 			if (rs.next()) throw new DbStateException();
 			rs.close();
 			ps.close();
 			if (deleted) throw new MessageDeletedException();
+			if (blockCount > 1) throw new MessageTooLargeException();
 			sql = "SELECT data FROM blocks"
 					+ " WHERE messageId = ? AND blockCount = 1";
 			ps = txn.prepareStatement(sql);

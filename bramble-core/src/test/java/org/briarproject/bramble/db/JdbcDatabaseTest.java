@@ -165,7 +165,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 		assertTrue(db.containsGroup(txn, groupId));
 		assertTrue(db.containsMessage(txn, messageId));
 		assertArrayEquals(message.getBody(),
-				db.getMessage(txn, messageId).getBody());
+				db.getSmallMessage(txn, messageId).getBody());
 
 		// Delete the records
 		db.removeMessage(txn, messageId);
@@ -1826,7 +1826,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 		assertEquals(singletonList(messageId), ids);
 
 		// The message should be available
-		Message m = db.getMessage(txn, messageId);
+		Message m = db.getSmallMessage(txn, messageId);
 		assertEquals(messageId, m.getId());
 		assertEquals(groupId, m.getGroupId());
 		assertEquals(message.getTimestamp(), m.getTimestamp());
@@ -1846,7 +1846,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 
 		// Requesting the message should throw an exception
 		try {
-			db.getMessage(txn, messageId);
+			db.getSmallMessage(txn, messageId);
 			fail();
 		} catch (MessageDeletedException expected) {
 			// Expected
@@ -1984,7 +1984,7 @@ public abstract class JdbcDatabaseTest extends BrambleTestCase {
 		Connection txn = db.startTransaction();
 		try {
 			// Ask for a nonexistent message - an exception should be thrown
-			db.getMessage(txn, messageId);
+			db.getSmallMessage(txn, messageId);
 			fail();
 		} catch (DbException expected) {
 			// It should be possible to abort the transaction without error
