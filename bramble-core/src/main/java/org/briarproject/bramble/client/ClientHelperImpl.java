@@ -116,23 +116,25 @@ class ClientHelperImpl implements ClientHelper {
 	}
 
 	@Override
-	public Message getMessage(MessageId m) throws DbException {
-		return db.transactionWithResult(true, txn -> getMessage(txn, m));
+	public Message getSmallMessage(MessageId m) throws DbException {
+		return db.transactionWithResult(true, txn -> getSmallMessage(txn, m));
 	}
 
 	@Override
-	public Message getMessage(Transaction txn, MessageId m) throws DbException {
+	public Message getSmallMessage(Transaction txn, MessageId m)
+			throws DbException {
 		return db.getSmallMessage(txn, m);
 	}
 
 	@Override
-	public BdfList getMessageAsList(MessageId m) throws DbException,
+	public BdfList getSmallMessageAsList(MessageId m) throws DbException,
 			FormatException {
-		return db.transactionWithResult(true, txn -> getMessageAsList(txn, m));
+		return db.transactionWithResult(true, txn ->
+				getSmallMessageAsList(txn, m));
 	}
 
 	@Override
-	public BdfList getMessageAsList(Transaction txn, MessageId m)
+	public BdfList getSmallMessageAsList(Transaction txn, MessageId m)
 			throws DbException, FormatException {
 		return toList(db.getSmallMessage(txn, m).getBody());
 	}

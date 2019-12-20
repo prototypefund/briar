@@ -35,14 +35,15 @@ public interface ClientHelper {
 
 	Message createMessageForStoringMetadata(GroupId g);
 
-	Message getMessage(MessageId m) throws DbException;
+	Message getSmallMessage(MessageId m) throws DbException;
 
-	Message getMessage(Transaction txn, MessageId m) throws DbException;
+	Message getSmallMessage(Transaction txn, MessageId m) throws DbException;
 
-	BdfList getMessageAsList(MessageId m) throws DbException, FormatException;
+	BdfList getSmallMessageAsList(MessageId m)
+			throws DbException, FormatException;
 
-	BdfList getMessageAsList(Transaction txn, MessageId m) throws DbException,
-			FormatException;
+	BdfList getSmallMessageAsList(Transaction txn, MessageId m)
+			throws DbException, FormatException;
 
 	BdfDictionary getGroupMetadataAsDictionary(GroupId g) throws DbException,
 			FormatException;

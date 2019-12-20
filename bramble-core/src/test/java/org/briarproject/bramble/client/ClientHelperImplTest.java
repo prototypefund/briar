@@ -126,7 +126,7 @@ public class ClientHelperImplTest extends BrambleTestCase {
 			will(returnValue(message));
 		}});
 
-		clientHelper.getMessageAsList(messageId);
+		clientHelper.getSmallMessageAsList(messageId);
 		context.assertIsSatisfied();
 	}
 

@@ -120,6 +120,7 @@ class ValidationManagerImpl implements ValidationManager, Service,
 			Pair<Message, Group> mg = db.transactionWithResult(true, txn -> {
 				MessageId id = unvalidated.poll();
 				if (id == null) throw new AssertionError();
+				// TODO: Support large messages
 				Message m = db.getSmallMessage(txn, id);
 				Group g = db.getGroup(txn, m.getGroupId());
 				return new Pair<>(m, g);
@@ -179,6 +180,7 @@ class ValidationManagerImpl implements ValidationManager, Service,
 						invalidateMessage(txn, id);
 						addDependentsToInvalidate(txn, id, invalidate);
 					} else if (allDelivered) {
+						// TODO: Support large messages
 						Message m = db.getSmallMessage(txn, id);
 						Group g = db.getGroup(txn, m.getGroupId());
 						ClientId c = g.getClientId();
