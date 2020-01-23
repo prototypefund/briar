@@ -11,7 +11,6 @@ import org.briarproject.bramble.PoliteExecutor;
 import org.briarproject.bramble.api.event.Event;
 import org.briarproject.bramble.api.network.event.NetworkStatusEvent;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.settings.Settings;
 
@@ -66,9 +65,9 @@ class AndroidLanTcpPlugin extends LanTcpPlugin {
 	private volatile SocketFactory socketFactory;
 
 	AndroidLanTcpPlugin(Executor ioExecutor, Context appContext,
-			Backoff backoff, PluginCallback callback, int maxLatency,
-			int maxIdleTime) {
-		super(ioExecutor, backoff, callback, maxLatency, maxIdleTime);
+			PluginCallback callback, int maxLatency, int maxIdleTime,
+			int pollingInterval) {
+		super(ioExecutor, callback, maxLatency, maxIdleTime, pollingInterval);
 		// Don't execute more than one connection status check at a time
 		connectionStatusExecutor =
 				new PoliteExecutor("AndroidLanTcpPlugin", ioExecutor, 1);

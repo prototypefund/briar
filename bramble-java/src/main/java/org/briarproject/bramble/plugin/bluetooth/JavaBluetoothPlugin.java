@@ -2,7 +2,6 @@ package org.briarproject.bramble.plugin.bluetooth;
 
 import org.briarproject.bramble.api.nullsafety.MethodsNotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.ParametersNotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.duplex.DuplexTransportConnection;
 
@@ -35,9 +34,9 @@ class JavaBluetoothPlugin extends BluetoothPlugin<StreamConnectionNotifier> {
 
 	JavaBluetoothPlugin(BluetoothConnectionLimiter connectionManager,
 			Executor ioExecutor, SecureRandom secureRandom,
-			Backoff backoff, PluginCallback callback, int maxLatency) {
-		super(connectionManager, ioExecutor, secureRandom, backoff, callback,
-				maxLatency);
+			PluginCallback callback, int maxLatency, int pollingInterval) {
+		super(connectionManager, ioExecutor, secureRandom, callback,
+				maxLatency, pollingInterval);
 	}
 
 	@Override

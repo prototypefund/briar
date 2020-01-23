@@ -11,7 +11,6 @@ import android.content.IntentFilter;
 
 import org.briarproject.bramble.api.nullsafety.MethodsNotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.ParametersNotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.PluginException;
 import org.briarproject.bramble.api.plugin.duplex.DuplexTransportConnection;
@@ -76,9 +75,9 @@ class AndroidBluetoothPlugin extends BluetoothPlugin<BluetoothServerSocket> {
 	AndroidBluetoothPlugin(BluetoothConnectionLimiter connectionLimiter,
 			Executor ioExecutor, AndroidExecutor androidExecutor,
 			Context appContext, SecureRandom secureRandom, Clock clock,
-			Backoff backoff, PluginCallback callback, int maxLatency) {
-		super(connectionLimiter, ioExecutor, secureRandom, backoff, callback,
-				maxLatency);
+			PluginCallback callback, int maxLatency, int pollingInterval) {
+		super(connectionLimiter, ioExecutor, secureRandom, callback,
+				maxLatency, pollingInterval);
 		this.androidExecutor = androidExecutor;
 		this.appContext = appContext;
 		this.clock = clock;

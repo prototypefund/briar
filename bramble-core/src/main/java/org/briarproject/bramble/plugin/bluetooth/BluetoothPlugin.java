@@ -13,7 +13,6 @@ import org.briarproject.bramble.api.lifecycle.IoExecutor;
 import org.briarproject.bramble.api.nullsafety.MethodsNotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.ParametersNotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.ConnectionHandler;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.PluginException;
@@ -71,9 +70,8 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 
 	private final Executor ioExecutor;
 	private final SecureRandom secureRandom;
-	private final Backoff backoff;
 	private final PluginCallback callback;
-	private final int maxLatency;
+	private final int maxLatency, pollingInterval;
 	private final AtomicBoolean used = new AtomicBoolean(false);
 
 	protected final PluginState state = new PluginState();
@@ -114,13 +112,13 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 
 	BluetoothPlugin(BluetoothConnectionLimiter connectionLimiter,
 			Executor ioExecutor, SecureRandom secureRandom,
-			Backoff backoff, PluginCallback callback, int maxLatency) {
+			PluginCallback callback, int maxLatency, int pollingInterval) {
 		this.connectionLimiter = connectionLimiter;
 		this.ioExecutor = ioExecutor;
 		this.secureRandom = secureRandom;
-		this.backoff = backoff;
 		this.callback = callback;
 		this.maxLatency = maxLatency;
+		this.pollingInterval = pollingInterval;
 	}
 
 	void onAdapterEnabled() {
@@ -192,7 +190,6 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 				tryToClose(ss);
 				return;
 			}
-			backoff.reset();
 			acceptContactConnections(ss);
 		});
 	}
@@ -234,7 +231,6 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 				return;
 			}
 			LOG.info("Connection received");
-			backoff.reset();
 			if (connectionLimiter.contactConnectionOpened(conn))
 				callback.handleConnection(conn);
 		}
@@ -264,14 +260,13 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 
 	@Override
 	public int getPollingInterval() {
-		return backoff.getPollingInterval();
+		return pollingInterval;
 	}
 
 	@Override
 	public void poll(Collection<Pair<TransportProperties, ConnectionHandler>>
 			properties) {
 		if (getState() != ACTIVE) return;
-		backoff.increment();
 		for (Pair<TransportProperties, ConnectionHandler> p : properties) {
 			connect(p.getFirst(), p.getSecond());
 		}
@@ -286,10 +281,8 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 			if (getState() != ACTIVE) return;
 			if (!connectionLimiter.canOpenContactConnection()) return;
 			DuplexTransportConnection d = createConnection(p);
-			if (d != null) {
-				backoff.reset();
-				if (connectionLimiter.contactConnectionOpened(d))
-					h.handleConnection(d);
+			if (d != null && connectionLimiter.contactConnectionOpened(d)) {
+				h.handleConnection(d);
 			}
 		});
 	}
@@ -335,7 +328,6 @@ abstract class BluetoothPlugin<SS> implements DuplexPlugin, EventListener {
 		if (isNullOrEmpty(uuid)) return null;
 		DuplexTransportConnection conn = connect(address, uuid);
 		if (conn == null) return null;
-		// TODO: Why don't we reset the backoff here?
 		return connectionLimiter.contactConnectionOpened(conn) ? conn : null;
 	}
 

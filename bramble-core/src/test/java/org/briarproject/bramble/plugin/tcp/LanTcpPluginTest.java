@@ -3,7 +3,6 @@ package org.briarproject.bramble.plugin.tcp;
 import org.briarproject.bramble.api.data.BdfList;
 import org.briarproject.bramble.api.keyagreement.KeyAgreementListener;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.Plugin.State;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.TransportConnectionReader;
@@ -42,14 +41,12 @@ import static org.junit.Assert.assertTrue;
 
 public class LanTcpPluginTest extends BrambleTestCase {
 
-	private final Backoff backoff = new TestBackoff();
 	private final ExecutorService ioExecutor = newCachedThreadPool();
 
 	@Test
 	public void testAddressesAreOnSameLan() {
 		Callback callback = new Callback();
-		LanTcpPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				0, 0);
+		LanTcpPlugin plugin = new LanTcpPlugin(ioExecutor, callback, 0, 0, 0);
 		// Local and remote in 10.0.0.0/8 should return true
 		assertTrue(plugin.addressesAreOnSameLan(makeAddress(10, 0, 0, 0),
 				makeAddress(10, 255, 255, 255)));
@@ -100,8 +97,7 @@ public class LanTcpPluginTest extends BrambleTestCase {
 			return;
 		}
 		Callback callback = new Callback();
-		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				0, 0);
+		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, callback, 0, 0, 0);
 		plugin.start();
 		// The plugin should have bound a socket and stored the port number
 		assertTrue(callback.propertiesLatch.await(5, SECONDS));
@@ -135,8 +131,7 @@ public class LanTcpPluginTest extends BrambleTestCase {
 			return;
 		}
 		Callback callback = new Callback();
-		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				0, 0);
+		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, callback, 0, 0, 0);
 		plugin.start();
 		// The plugin should have bound a socket and stored the port number
 		assertTrue(callback.propertiesLatch.await(5, SECONDS));
@@ -184,8 +179,7 @@ public class LanTcpPluginTest extends BrambleTestCase {
 			return;
 		}
 		Callback callback = new Callback();
-		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				0, 0);
+		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, callback, 0, 0, 0);
 		plugin.start();
 		assertTrue(callback.propertiesLatch.await(5, SECONDS));
 		KeyAgreementListener kal =
@@ -232,8 +226,7 @@ public class LanTcpPluginTest extends BrambleTestCase {
 			return;
 		}
 		Callback callback = new Callback();
-		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				0, 0);
+		DuplexPlugin plugin = new LanTcpPlugin(ioExecutor, callback, 0, 0, 0);
 		plugin.start();
 		// The plugin should have bound a socket and stored the port number
 		assertTrue(callback.propertiesLatch.await(5, SECONDS));
@@ -387,22 +380,6 @@ public class LanTcpPluginTest extends BrambleTestCase {
 
 		@Override
 		public void handleWriter(TransportConnectionWriter w) {
-		}
-	}
-
-	private static class TestBackoff implements Backoff {
-
-		@Override
-		public int getPollingInterval() {
-			return 60 * 1000;
-		}
-
-		@Override
-		public void increment() {
-		}
-
-		@Override
-		public void reset() {
 		}
 	}
 }

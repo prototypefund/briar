@@ -2,8 +2,6 @@ package org.briarproject.bramble.plugin.tcp;
 
 import org.briarproject.bramble.api.event.EventBus;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
-import org.briarproject.bramble.api.plugin.BackoffFactory;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.TransportId;
 import org.briarproject.bramble.api.plugin.duplex.DuplexPlugin;
@@ -13,27 +11,24 @@ import java.util.concurrent.Executor;
 
 import javax.annotation.concurrent.Immutable;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.briarproject.bramble.api.plugin.LanTcpConstants.ID;
 
 @Immutable
 @NotNullByDefault
 public class LanTcpPluginFactory implements DuplexPluginFactory {
 
-	private static final int MAX_LATENCY = 30 * 1000; // 30 seconds
-	private static final int MAX_IDLE_TIME = 30 * 1000; // 30 seconds
-	private static final int MIN_POLLING_INTERVAL = 60 * 1000; // 1 minute
-	private static final int MAX_POLLING_INTERVAL = 10 * 60 * 1000; // 10 mins
-	private static final double BACKOFF_BASE = 1.2;
+	private static final int MAX_LATENCY = (int) SECONDS.toMillis(30);
+	private static final int MAX_IDLE_TIME = (int) SECONDS.toMillis(30);
+	private static final int POLLING_INTERVAL = (int) MINUTES.toMillis(1);
 
 	private final Executor ioExecutor;
 	private final EventBus eventBus;
-	private final BackoffFactory backoffFactory;
 
-	public LanTcpPluginFactory(Executor ioExecutor, EventBus eventBus,
-			BackoffFactory backoffFactory) {
+	public LanTcpPluginFactory(Executor ioExecutor, EventBus eventBus) {
 		this.ioExecutor = ioExecutor;
 		this.eventBus = eventBus;
-		this.backoffFactory = backoffFactory;
 	}
 
 	@Override
@@ -48,10 +43,8 @@ public class LanTcpPluginFactory implements DuplexPluginFactory {
 
 	@Override
 	public DuplexPlugin createPlugin(PluginCallback callback) {
-		Backoff backoff = backoffFactory.createBackoff(MIN_POLLING_INTERVAL,
-				MAX_POLLING_INTERVAL, BACKOFF_BASE);
-		LanTcpPlugin plugin = new LanTcpPlugin(ioExecutor, backoff, callback,
-				MAX_LATENCY, MAX_IDLE_TIME);
+		LanTcpPlugin plugin = new LanTcpPlugin(ioExecutor, callback,
+				MAX_LATENCY, MAX_IDLE_TIME, POLLING_INTERVAL);
 		eventBus.addListener(plugin);
 		return plugin;
 	}

@@ -2,7 +2,6 @@ package org.briarproject.bramble.plugin.tcp;
 
 import org.briarproject.bramble.api.nullsafety.MethodsNotNullByDefault;
 import org.briarproject.bramble.api.nullsafety.ParametersNotNullByDefault;
-import org.briarproject.bramble.api.plugin.Backoff;
 import org.briarproject.bramble.api.plugin.PluginCallback;
 import org.briarproject.bramble.api.plugin.TransportId;
 import org.briarproject.bramble.api.properties.TransportProperties;
@@ -28,9 +27,10 @@ class WanTcpPlugin extends TcpPlugin {
 
 	private volatile MappingResult mappingResult;
 
-	WanTcpPlugin(Executor ioExecutor, Backoff backoff, PortMapper portMapper,
-			PluginCallback callback, int maxLatency, int maxIdleTime) {
-		super(ioExecutor, backoff, callback, maxLatency, maxIdleTime);
+	WanTcpPlugin(Executor ioExecutor, PortMapper portMapper,
+			PluginCallback callback, int maxLatency, int maxIdleTime,
+			int pollingInterval) {
+		super(ioExecutor, callback, maxLatency, maxIdleTime, pollingInterval);
 		this.portMapper = portMapper;
 	}
 

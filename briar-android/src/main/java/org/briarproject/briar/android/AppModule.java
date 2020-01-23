@@ -18,7 +18,6 @@ import org.briarproject.bramble.api.lifecycle.IoExecutor;
 import org.briarproject.bramble.api.lifecycle.LifecycleManager;
 import org.briarproject.bramble.api.network.NetworkManager;
 import org.briarproject.bramble.api.nullsafety.NotNullByDefault;
-import org.briarproject.bramble.api.plugin.BackoffFactory;
 import org.briarproject.bramble.api.plugin.PluginConfig;
 import org.briarproject.bramble.api.plugin.duplex.DuplexPluginFactory;
 import org.briarproject.bramble.api.plugin.simplex.SimplexPluginFactory;
@@ -112,22 +111,21 @@ public class AppModule {
 	PluginConfig providePluginConfig(@IoExecutor Executor ioExecutor,
 			@Scheduler ScheduledExecutorService scheduler,
 			AndroidExecutor androidExecutor, SecureRandom random,
-			SocketFactory torSocketFactory, BackoffFactory backoffFactory,
-			Application app, NetworkManager networkManager,
-			LocationUtils locationUtils, EventBus eventBus,
-			ResourceProvider resourceProvider,
+			SocketFactory torSocketFactory, Application app,
+			NetworkManager networkManager, LocationUtils locationUtils,
+			EventBus eventBus, ResourceProvider resourceProvider,
 			CircumventionProvider circumventionProvider,
 			BatteryManager batteryManager, Clock clock) {
 		Context appContext = app.getApplicationContext();
 		DuplexPluginFactory bluetooth =
 				new AndroidBluetoothPluginFactory(ioExecutor, androidExecutor,
-						appContext, random, eventBus, clock, backoffFactory);
+						appContext, random, eventBus, clock);
 		DuplexPluginFactory tor = new AndroidTorPluginFactory(ioExecutor,
 				scheduler, appContext, networkManager, locationUtils, eventBus,
-				torSocketFactory, backoffFactory, resourceProvider,
-				circumventionProvider, batteryManager, clock);
+				torSocketFactory, resourceProvider, circumventionProvider,
+				batteryManager, clock);
 		DuplexPluginFactory lan = new AndroidLanTcpPluginFactory(ioExecutor,
-				eventBus, backoffFactory, appContext);
+				eventBus, appContext);
 		Collection<DuplexPluginFactory> duplex = asList(bluetooth, tor, lan);
 		@NotNullByDefault
 		PluginConfig pluginConfig = new PluginConfig() {
