@@ -45,9 +45,11 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -679,8 +681,7 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
 	@Override
 	public void circuitStatus(String status, String id, String path) {
-		if (status.equals("BUILT") &&
-				state.getAndSetCircuitBuilt()) {
+		if (status.equals("BUILT") && state.getAndSetCircuitBuilt()) {
 			LOG.info("First circuit built");
 		}
 	}
@@ -691,8 +692,8 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 
 	@Override
 	public void orConnStatus(String status, String orName) {
-		if (LOG.isLoggable(INFO))
-			LOG.info("OR connection " + status + " " + orName);
+		if (LOG.isLoggable(INFO)) LOG.info("OR connection " + status);
+		state.setOrConnectionStatus(orName, status);
 		if (status.equals("CLOSED") || status.equals("FAILED")) {
 			// Check whether we've lost connectivity
 			updateConnectionStatus(networkManager.getNetworkStatus(),
@@ -868,6 +869,9 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 		@Nullable
 		private ServerSocket serverSocket = null;
 
+		@GuardedBy("this")
+		private final Set<String> orConnections = new HashSet<>();
+
 		synchronized void setStarted() {
 			started = true;
 			callback.pluginStateChanged(getState());
@@ -917,6 +921,20 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 			callback.pluginStateChanged(getState());
 		}
 
+		synchronized void setOrConnectionStatus(String orName, String status) {
+			if (status.equals("CONNECTED")) {
+				if (!orConnections.add(orName)) {
+					LOG.warning("Duplicate OR connection");
+				}
+			} else {
+				orConnections.remove(orName);
+			}
+			if (LOG.isLoggable(INFO)) {
+				LOG.info(orConnections.size() + " OR connections");
+			}
+			callback.pluginStateChanged(getState());
+		}
+
 		// Doesn't affect getState()
 		synchronized boolean setServerSocket(ServerSocket ss) {
 			if (stopped || serverSocket != null) return false;
@@ -933,7 +951,8 @@ abstract class TorPlugin implements DuplexPlugin, EventHandler, EventListener {
 			if (!started || stopped || disabledBySettings) return DISABLED;
 			if (!networkInitialised) return ENABLING;
 			if (!networkEnabled) return INACTIVE;
-			return bootstrapped && circuitBuilt ? ACTIVE : ENABLING;
+			return bootstrapped && circuitBuilt && !orConnections.isEmpty()
+					? ACTIVE : ENABLING;
 		}
 
 		synchronized int getReasonDisabled() {
