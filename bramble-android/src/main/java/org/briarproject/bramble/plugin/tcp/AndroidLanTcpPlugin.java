@@ -3,7 +3,7 @@ package org.briarproject.bramble.plugin.tcp;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
-import android.net.NetworkInfo;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 
@@ -28,7 +28,7 @@ import javax.net.SocketFactory;
 
 import static android.content.Context.CONNECTIVITY_SERVICE;
 import static android.content.Context.WIFI_SERVICE;
-import static android.net.ConnectivityManager.TYPE_WIFI;
+import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.os.Build.VERSION.SDK_INT;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
@@ -120,9 +120,11 @@ class AndroidLanTcpPlugin extends LanTcpPlugin implements EventListener {
 	private SocketFactory getSocketFactory() {
 		if (SDK_INT < 21) return SocketFactory.getDefault();
 		for (Network net : connectivityManager.getAllNetworks()) {
-			NetworkInfo info = connectivityManager.getNetworkInfo(net);
-			if (info != null && info.getType() == TYPE_WIFI)
+			NetworkCapabilities caps =
+					connectivityManager.getNetworkCapabilities(net);
+			if (caps != null && caps.hasTransport(TRANSPORT_WIFI)) {
 				return net.getSocketFactory();
+			}
 		}
 		LOG.warning("Could not find suitable socket factory");
 		return SocketFactory.getDefault();
