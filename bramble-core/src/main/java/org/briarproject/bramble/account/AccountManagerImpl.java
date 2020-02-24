@@ -177,8 +177,9 @@ class AccountManagerImpl implements AccountManager {
 	@GuardedBy("stateChangeLock")
 	private boolean encryptAndStoreDatabaseKey(SecretKey key, String password) {
 		byte[] plaintext = key.getBytes();
-		byte[] ciphertext = crypto.encryptWithPassword(plaintext, password,
-				databaseConfig.getKeyStrengthener());
+		// Don't use a key strengthener as the Android keymaster isn't reliable
+		byte[] ciphertext =
+				crypto.encryptWithPassword(plaintext, password, null);
 		return storeEncryptedDatabaseKey(toHexString(ciphertext));
 	}
 
@@ -195,7 +196,7 @@ class AccountManagerImpl implements AccountManager {
 	@Override
 	public boolean signIn(String password) {
 		synchronized (stateChangeLock) {
-			SecretKey key = loadAndDecryptDatabaseKey(password);
+			SecretKey key = loadAndDecryptDatabaseKey(password, false);
 			if (key == null) return false;
 			databaseKey = key;
 			return true;
@@ -204,7 +205,8 @@ class AccountManagerImpl implements AccountManager {
 
 	@GuardedBy("stateChangeLock")
 	@Nullable
-	private SecretKey loadAndDecryptDatabaseKey(String password) {
+	private SecretKey loadAndDecryptDatabaseKey(String password,
+			boolean changing) {
 		String hex = loadEncryptedDatabaseKey();
 		if (hex == null) {
 			LOG.warning("Failed to load encrypted database key");
@@ -219,11 +221,11 @@ class AccountManagerImpl implements AccountManager {
 			return null;
 		}
 		SecretKey key = new SecretKey(plaintext);
-		// If the DB key was encrypted with a weak key and a key strengthener
-		// is now available, re-encrypt the DB key with a strengthened key
-		if (keyStrengthener != null &&
-				!crypto.isEncryptedWithStrengthenedKey(ciphertext)) {
-			LOG.info("Re-encrypting database key with strengthened key");
+		// If the DB key was encrypted with a hardware-backed key, re-encrypt
+		// it without the hardware-backed key so keymaster bugs don't delete
+		// the user's account
+		if (!changing && crypto.isEncryptedWithStrengthenedKey(ciphertext)) {
+			LOG.info("Re-encrypting database key without strengthened key");
 			encryptAndStoreDatabaseKey(key, password);
 		}
 		return key;
@@ -232,7 +234,7 @@ class AccountManagerImpl implements AccountManager {
 	@Override
 	public boolean changePassword(String oldPassword, String newPassword) {
 		synchronized (stateChangeLock) {
-			SecretKey key = loadAndDecryptDatabaseKey(oldPassword);
+			SecretKey key = loadAndDecryptDatabaseKey(oldPassword, true);
 			return key != null && encryptAndStoreDatabaseKey(key, newPassword);
 		}
 	}
